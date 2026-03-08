@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { SiteGenerationPlanner } from "@/components/demo-site/planner/site-generation-planner";
-import { mockCommerceLeads } from "@/lib/leads/mock-leads";
 import { listDemoSites } from "@/lib/demo-sites/repository";
 
 export default async function HomePage() {
@@ -37,7 +36,7 @@ export default async function HomePage() {
           </Link>
         </div>
 
-        <SiteGenerationPlanner leads={mockCommerceLeads} referenceSites={references} />
+        <SiteGenerationPlanner referenceSites={references} />
       </div>
     </main>
   );

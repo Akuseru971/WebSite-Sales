@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { BusinessCategory, DemoSiteStyle } from "@/lib/demo-sites/types";
-import type { CommerceLead } from "@/lib/leads/mock-leads";
+import type { CommerceLead } from "@/lib/leads/types";
 
 interface ReferenceSite {
   id: string;
@@ -16,7 +16,6 @@ interface ReferenceSite {
 }
 
 interface SiteGenerationPlannerProps {
-  leads: CommerceLead[];
   referenceSites: ReferenceSite[];
 }
 
@@ -126,9 +125,37 @@ function initialCategoryMap(): Record<BusinessCategory, boolean> {
   };
 }
 
-export function SiteGenerationPlanner({ leads, referenceSites }: SiteGenerationPlannerProps) {
+async function searchLeads(params: {
+  city: string;
+  categories: BusinessCategory[];
+}): Promise<CommerceLead[]> {
+  const response = await fetch("/api/leads/search", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      city: params.city,
+      categories: params.categories,
+      limitPerCategory: 30
+    })
+  });
+
+  const payload = await response.json();
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Recherche impossible.");
+  }
+
+  return Array.isArray(payload.leads) ? (payload.leads as CommerceLead[]) : [];
+}
+
+export function SiteGenerationPlanner({ referenceSites }: SiteGenerationPlannerProps) {
   const [cityQuery, setCityQuery] = useState("");
   const [activeCategories, setActiveCategories] = useState<Record<BusinessCategory, boolean>>(initialCategoryMap);
+  const [fetchedLeads, setFetchedLeads] = useState<CommerceLead[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [hasSearched, setHasSearched] = useState(false);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [selectedSiteOptionIds, setSelectedSiteOptionIds] = useState<string[]>([]);
   const [plannedGenerations, setPlannedGenerations] = useState<PlannedGeneration[]>([]);
@@ -136,14 +163,14 @@ export function SiteGenerationPlanner({ leads, referenceSites }: SiteGenerationP
   const filteredLeads = useMemo(() => {
     const cityFilter = normalize(cityQuery);
 
-    return leads.filter((lead) => {
+    return fetchedLeads.filter((lead) => {
       const categoryAllowed = activeCategories[lead.category];
       const cityAllowed =
         !cityFilter || normalize(lead.city).includes(cityFilter) || normalize(lead.businessName).includes(cityFilter);
 
       return categoryAllowed && cityAllowed;
     });
-  }, [activeCategories, cityQuery, leads]);
+  }, [activeCategories, cityQuery, fetchedLeads]);
 
   const leadsByCategory = useMemo(() => {
     return filteredLeads.reduce<Record<BusinessCategory, CommerceLead[]>>(
@@ -165,8 +192,8 @@ export function SiteGenerationPlanner({ leads, referenceSites }: SiteGenerationP
       return null;
     }
 
-    return leads.find((lead) => lead.id === selectedLeadId) ?? null;
-  }, [leads, selectedLeadId]);
+    return fetchedLeads.find((lead) => lead.id === selectedLeadId) ?? null;
+  }, [fetchedLeads, selectedLeadId]);
 
   const availableSiteOptions = selectedLead ? siteOptionsByCategory[selectedLead.category] : [];
 
@@ -186,6 +213,39 @@ export function SiteGenerationPlanner({ leads, referenceSites }: SiteGenerationP
   function chooseLead(leadId: string) {
     setSelectedLeadId(leadId);
     setSelectedSiteOptionIds([]);
+  }
+
+  async function handleSearch() {
+    const normalizedCity = cityQuery.trim();
+    if (!normalizedCity) {
+      setSearchError("Indique une ville avant de lancer la recherche.");
+      return;
+    }
+
+    const categories = (Object.keys(activeCategories) as BusinessCategory[]).filter(
+      (category) => activeCategories[category]
+    );
+
+    if (!categories.length) {
+      setSearchError("Selectionne au moins une categorie.");
+      return;
+    }
+
+    setIsSearching(true);
+    setSearchError(null);
+    setHasSearched(true);
+
+    try {
+      const leads = await searchLeads({ city: normalizedCity, categories });
+      setFetchedLeads(leads);
+      setSelectedLeadId(null);
+      setSelectedSiteOptionIds([]);
+    } catch (error) {
+      setFetchedLeads([]);
+      setSearchError(error instanceof Error ? error.message : "Erreur de recherche.");
+    } finally {
+      setIsSearching(false);
+    }
   }
 
   function buildGenerationPlan() {
@@ -237,10 +297,26 @@ export function SiteGenerationPlanner({ leads, referenceSites }: SiteGenerationP
               className="mt-1 w-full rounded-xl border border-zinc-300 px-3 py-2"
             />
           </label>
-          <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-zinc-600">
-            {filteredLeads.length} commerces matches
-          </p>
+          <div className="flex items-center gap-2">
+            <p className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-zinc-600">
+              {filteredLeads.length} commerces matches
+            </p>
+            <button
+              type="button"
+              onClick={handleSearch}
+              disabled={isSearching}
+              className="rounded-full bg-ink px-4 py-2 text-xs font-semibold uppercase tracking-[0.1em] text-white disabled:opacity-60"
+            >
+              {isSearching ? "Recherche..." : "Rechercher"}
+            </button>
+          </div>
         </div>
+
+        {searchError ? (
+          <p className="mt-3 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">{searchError}</p>
+        ) : null}
+
+        <p className="mt-3 text-xs text-zinc-500">Source live: OpenStreetMap (Nominatim + Overpass API)</p>
 
         <div className="mt-4 flex flex-wrap gap-2">
           {(Object.keys(categoryLabels) as BusinessCategory[]).map((category) => (
@@ -263,6 +339,12 @@ export function SiteGenerationPlanner({ leads, referenceSites }: SiteGenerationP
         <h3 className="mt-2 font-[var(--font-heading)] text-3xl text-ink">Commerces par categorie</h3>
 
         <div className="mt-4 space-y-4">
+          {hasSearched && !filteredLeads.length && !isSearching && !searchError ? (
+            <p className="rounded-xl border border-dashed border-zinc-300 bg-zinc-50 p-4 text-sm text-zinc-600">
+              Aucun commerce trouve pour cette recherche. Essaie une autre ville ou active plus de categories.
+            </p>
+          ) : null}
+
           {(Object.keys(categoryLabels) as BusinessCategory[]).map((category) => {
             const categoryLeads = leadsByCategory[category];
             if (!categoryLeads.length) {
