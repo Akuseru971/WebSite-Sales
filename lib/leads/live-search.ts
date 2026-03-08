@@ -214,12 +214,23 @@ export async function searchCommerceLeads(params: {
         businessName: name,
         category,
         city,
+        address: [
+          element.tags?.["addr:housenumber"],
+          element.tags?.["addr:street"]
+        ]
+          .filter(Boolean)
+          .join(" ") || undefined,
+        postcode: element.tags?.["addr:postcode"],
+        country: element.tags?.["addr:country"],
         district:
           element.tags?.["addr:suburb"] ??
           element.tags?.["addr:city_district"] ??
           element.tags?.["addr:neighbourhood"],
         phone: element.tags?.phone ?? element.tags?.["contact:phone"],
         website: element.tags?.website ?? element.tags?.["contact:website"],
+        email: element.tags?.email ?? element.tags?.["contact:email"],
+        openingHours: element.tags?.opening_hours,
+        description: element.tags?.description,
         latitude: lat,
         longitude: lon,
         source: "openstreetmap"

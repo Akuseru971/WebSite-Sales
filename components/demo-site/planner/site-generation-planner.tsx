@@ -29,11 +29,18 @@ interface SiteOption {
 
 interface PlannedGeneration {
   id: string;
+  lead: CommerceLead;
   leadName: string;
   city: string;
   category: BusinessCategory;
   siteOptionLabel: string;
+  templateType: BusinessCategory;
   style: DemoSiteStyle;
+  status: "queued" | "generating" | "generated" | "failed";
+  errorMessage?: string;
+  createdSiteId?: string;
+  createdSitePreviewUrl?: string;
+  createdSiteEditorUrl?: string;
   referencePreviewUrl?: string;
   referenceEditorUrl?: string;
 }
@@ -160,6 +167,8 @@ export function SiteGenerationPlanner({ referenceSites }: SiteGenerationPlannerP
   const [selectedSiteOptionIds, setSelectedSiteOptionIds] = useState<string[]>([]);
   const [plannedGenerations, setPlannedGenerations] = useState<PlannedGeneration[]>([]);
 
+  const hasQueuedItems = plannedGenerations.some((item) => item.status === "queued" || item.status === "failed");
+
   const filteredLeads = useMemo(() => {
     const cityFilter = normalize(cityQuery);
 
@@ -267,17 +276,98 @@ export function SiteGenerationPlanner({ referenceSites }: SiteGenerationPlannerP
 
       return {
         id: `${selectedLead.id}-${option.id}-${now}-${index}`,
+        lead: selectedLead,
         leadName: selectedLead.businessName,
         city: selectedLead.city,
         category: selectedLead.category,
         siteOptionLabel: option.label,
+        templateType: option.templateType,
         style: option.style,
+        status: "queued",
         referencePreviewUrl: matchingReference?.previewUrl,
         referenceEditorUrl: matchingReference?.editorUrl
       };
     });
 
     setPlannedGenerations((previous) => [...plans, ...previous]);
+  }
+
+  async function generatePlannedSite(planId: string) {
+    const plan = plannedGenerations.find((item) => item.id === planId);
+    if (!plan) {
+      return;
+    }
+
+    setPlannedGenerations((previous) =>
+      previous.map((item) =>
+        item.id === planId
+          ? { ...item, status: "generating", errorMessage: undefined }
+          : item
+      )
+    );
+
+    try {
+      const response = await fetch("/api/demo-sites/generate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          lead: plan.lead,
+          siteOption: {
+            label: plan.siteOptionLabel,
+            templateType: plan.templateType,
+            style: plan.style
+          }
+        })
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Generation API failed.");
+      }
+
+      const siteId = payload.site?.id as string | undefined;
+      const previewUrl = payload.site?.previewUrl as string | undefined;
+
+      setPlannedGenerations((previous) =>
+        previous.map((item) =>
+          item.id === planId
+            ? {
+                ...item,
+                status: "generated",
+                createdSiteId: siteId,
+                createdSitePreviewUrl: previewUrl,
+                createdSiteEditorUrl: siteId ? `/dashboard/demos/${siteId}/editor` : undefined
+              }
+            : item
+        )
+      );
+    } catch (error) {
+      setPlannedGenerations((previous) =>
+        previous.map((item) =>
+          item.id === planId
+            ? {
+                ...item,
+                status: "failed",
+                errorMessage: error instanceof Error ? error.message : "Generation failed"
+              }
+            : item
+        )
+      );
+    }
+  }
+
+  async function generateAllQueuedSites() {
+    const queueIds = plannedGenerations
+      .filter((item) => item.status === "queued" || item.status === "failed")
+      .map((item) => item.id);
+
+    for (const id of queueIds) {
+      // Sequential generation keeps provider/API pressure controlled.
+      // eslint-disable-next-line no-await-in-loop
+      await generatePlannedSite(id);
+    }
   }
 
   return (
@@ -444,7 +534,17 @@ export function SiteGenerationPlanner({ referenceSites }: SiteGenerationPlannerP
         )}
 
         <div className="mt-6 border-t border-zinc-200 pt-4">
-          <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-600">File de generation</h3>
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-600">File de generation</h3>
+            <button
+              type="button"
+              onClick={generateAllQueuedSites}
+              disabled={!hasQueuedItems}
+              className="rounded-full bg-ink px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+            >
+              Generer toute la file
+            </button>
+          </div>
           <div className="mt-3 space-y-3">
             {plannedGenerations.length ? (
               plannedGenerations.map((plan) => (
@@ -454,7 +554,42 @@ export function SiteGenerationPlanner({ referenceSites }: SiteGenerationPlannerP
                     {categoryLabels[plan.category]} - {plan.city} - {plan.siteOptionLabel}
                   </p>
                   <p className="mt-1 text-xs uppercase tracking-[0.08em] text-zinc-500">Style: {plan.style}</p>
+                  <p className="mt-1 text-xs uppercase tracking-[0.08em] text-zinc-500">
+                    Statut: {plan.status}
+                  </p>
+                  {plan.errorMessage ? (
+                    <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-xs text-rose-700">
+                      {plan.errorMessage}
+                    </p>
+                  ) : null}
                   <div className="mt-3 flex flex-wrap gap-2">
+                    {plan.status !== "generated" ? (
+                      <button
+                        type="button"
+                        className="rounded-full bg-ink px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+                        disabled={plan.status === "generating"}
+                        onClick={() => generatePlannedSite(plan.id)}
+                      >
+                        {plan.status === "generating" ? "Generation..." : "Generer ce site"}
+                      </button>
+                    ) : null}
+                    {plan.createdSitePreviewUrl ? (
+                      <Link
+                        href={plan.createdSitePreviewUrl}
+                        target="_blank"
+                        className="rounded-full border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700"
+                      >
+                        Ouvrir site genere
+                      </Link>
+                    ) : null}
+                    {plan.createdSiteEditorUrl ? (
+                      <Link
+                        href={plan.createdSiteEditorUrl}
+                        className="rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white"
+                      >
+                        Ouvrir editeur du site genere
+                      </Link>
+                    ) : null}
                     {plan.referencePreviewUrl ? (
                       <Link
                         href={plan.referencePreviewUrl}

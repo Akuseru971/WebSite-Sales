@@ -6,10 +6,16 @@ export interface CommerceLead {
   category: BusinessCategory;
   city: string;
   district?: string;
+  address?: string;
+  postcode?: string;
+  country?: string;
   contactName?: string;
   phone?: string;
   website?: string;
+  email?: string;
+  openingHours?: string;
+  description?: string;
   latitude?: number;
   longitude?: number;
-  source?: "openstreetmap";
+  source?: "openstreetmap" | "website" | "hybrid";
 }

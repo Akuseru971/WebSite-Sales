@@ -7,6 +7,25 @@ import {
 } from "./versioning";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
+function slugify(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[^a-z0-9\s-]/g, "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .slice(0, 50);
+}
+
+function buildDemoSiteSlug(params: { name: string; city?: string }): string {
+  const base = [slugify(params.name), params.city ? slugify(params.city) : null]
+    .filter(Boolean)
+    .join("-");
+  const suffix = Math.random().toString(36).slice(2, 8);
+  return `${base || "demo-site"}-${suffix}`;
+}
+
 function getSupabaseAdminOrNull() {
   try {
     return createSupabaseAdminClient();
@@ -156,6 +175,67 @@ export async function saveDemoSiteContent(input: SaveDemoSiteContentInput): Prom
   }
 
   return mapDbDemoSiteRow(updated as Record<string, unknown>);
+}
+
+export async function createGeneratedDemoSite(params: {
+  content: DemoSiteContent;
+  templateType: DemoSiteRecord["templateType"];
+  designStyle: DemoSiteRecord["designStyle"];
+  actorUserId?: string;
+  activityType?: string;
+  changeNote?: string;
+}): Promise<DemoSiteRecord> {
+  const supabase = createSupabaseAdminClient();
+  const validatedContent = validateDemoSiteContent(params.content);
+  const slug = buildDemoSiteSlug({
+    name: validatedContent.businessInfo.name,
+    city: validatedContent.businessInfo.city
+  });
+
+  const { data, error } = await supabase
+    .from("demo_sites")
+    .insert({
+      slug,
+      title: validatedContent.businessInfo.name,
+      status: "generated",
+      template_type: params.templateType,
+      design_style: params.designStyle,
+      preview_url: `/preview/${slug}`,
+      generated_content_json: validatedContent,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    })
+    .select("*")
+    .single();
+
+  if (error || !data) {
+    throw new Error(`Failed to create generated demo site: ${error?.message ?? "unknown error"}`);
+  }
+
+  const site = mapDbDemoSiteRow(data as Record<string, unknown>);
+
+  await createDemoSiteVersionRecord({
+    demoSiteId: site.id,
+    content: validatedContent,
+    changeNote: params.changeNote ?? "Initial AI generation",
+    createdBy: params.actorUserId
+  });
+
+  if (params.actorUserId) {
+    await logDemoSiteActivity({
+      userId: params.actorUserId,
+      type: params.activityType ?? "demo_site_generated",
+      entityType: "demo_site",
+      entityId: site.id,
+      metadata: {
+        templateType: params.templateType,
+        designStyle: params.designStyle,
+        slug: site.slug
+      }
+    });
+  }
+
+  return site;
 }
 
 export async function restoreDemoSiteVersion(params: {
