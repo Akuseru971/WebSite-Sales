@@ -48,7 +48,13 @@ function mapDbDemoSiteRow(row: Record<string, unknown>): DemoSiteRecord {
     previewUrl: row.preview_url ? String(row.preview_url) : `/preview/${row.slug}`,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
-    generatedContent: normalized
+    generatedContent: normalized,
+    extractedSiteProfileJson: (row.extracted_site_profile_json as DemoSiteRecord["extractedSiteProfileJson"]) ?? normalized.extractedSiteProfile,
+    redesignPlanJson: (row.redesign_plan_json as DemoSiteRecord["redesignPlanJson"]) ?? normalized.redesignPlan,
+    adaptiveSiteJson: (row.adaptive_site_json as DemoSiteRecord["adaptiveSiteJson"]) ?? normalized.adaptiveSiteJson,
+    sourceScreenshotsJson: (row.source_screenshots_json as DemoSiteRecord["sourceScreenshotsJson"]) ?? normalized.extractedSiteProfile?.sourceScreenshots,
+    sourceStructureJson: (row.source_structure_json as DemoSiteRecord["sourceStructureJson"]) ?? normalized.extractedSiteProfile?.structuralIdentity.structureSummary,
+    sourceBrandSignalsJson: (row.source_brand_signals_json as DemoSiteRecord["sourceBrandSignalsJson"]) ?? normalized.extractedSiteProfile?.businessIdentity,
   };
 }
 
@@ -142,6 +148,12 @@ export async function saveDemoSiteContent(input: SaveDemoSiteContentInput): Prom
     .update({
       title: validatedContent.businessInfo.name,
       generated_content_json: validatedContent,
+      extracted_site_profile_json: validatedContent.extractedSiteProfile ?? null,
+      redesign_plan_json: validatedContent.redesignPlan ?? null,
+      adaptive_site_json: validatedContent.adaptiveSiteJson ?? null,
+      source_screenshots_json: validatedContent.extractedSiteProfile?.sourceScreenshots ?? null,
+      source_structure_json: validatedContent.extractedSiteProfile?.structuralIdentity.structureSummary ?? null,
+      source_brand_signals_json: validatedContent.extractedSiteProfile?.businessIdentity ?? null,
       updated_at: new Date().toISOString()
     })
     .eq("id", input.demoSiteId)
@@ -202,6 +214,12 @@ export async function createGeneratedDemoSite(params: {
       design_style: params.designStyle,
       preview_url: `/preview/${slug}`,
       generated_content_json: validatedContent,
+      extracted_site_profile_json: validatedContent.extractedSiteProfile ?? null,
+      redesign_plan_json: validatedContent.redesignPlan ?? null,
+      adaptive_site_json: validatedContent.adaptiveSiteJson ?? null,
+      source_screenshots_json: validatedContent.extractedSiteProfile?.sourceScreenshots ?? null,
+      source_structure_json: validatedContent.extractedSiteProfile?.structuralIdentity.structureSummary ?? null,
+      source_brand_signals_json: validatedContent.extractedSiteProfile?.businessIdentity ?? null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     })

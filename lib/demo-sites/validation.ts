@@ -21,6 +21,9 @@ const sectionTypeSchema = z.enum([
   "contact"
 ]);
 
+const densityModeSchema = z.enum(["airy", "balanced", "dense"]);
+const visualMoodSchema = z.enum(["editorial", "immersive", "minimal", "boutique", "corporate", "warm", "bold"]);
+
 const heroContentSchema = z.object({
   badge: z.string().optional(),
   title: z.string().min(1),
@@ -192,7 +195,109 @@ export const demoSiteContentSchema: z.ZodType<DemoSiteContent> = z.object({
     openingHours: z.array(z.string()).optional(),
     mapEmbedUrl: z.string().optional()
   }),
-  sections: z.array(demoSectionSchema).min(1)
+  sections: z.array(demoSectionSchema).min(1),
+  extractedSiteProfile: z
+    .object({
+      sourceUrl: z.string().url(),
+      extractedAt: z.string().min(1),
+      businessIdentity: z
+        .object({
+          businessName: z.string().optional(),
+          slogan: z.string().optional(),
+          brandColors: z.array(z.string()).optional(),
+          typographyFeel: z.string().optional(),
+          visualTone: z.string().optional(),
+          trustStyle: z.string().optional(),
+          positioning: z.string().optional(),
+          toneOfVoice: z.string().optional(),
+          ctaStyle: z.string().optional()
+        })
+        .optional()
+        .default({}),
+      contentIdentity: z.object({
+        headings: z.array(z.string()),
+        aboutText: z.array(z.string()),
+        services: z.array(z.string()),
+        faqs: z.array(z.object({ question: z.string(), answer: z.string() })),
+        testimonials: z.array(z.string()),
+        trustSignals: z.array(z.string()),
+        reservationWording: z.array(z.string()),
+        locationWording: z.array(z.string()),
+        contactDetails: z.object({
+          phones: z.array(z.string()),
+          emails: z.array(z.string()),
+          addresses: z.array(z.string()),
+          openingHours: z.array(z.string())
+        })
+      }),
+      visualIdentity: z.object({
+        logoUrl: z.string().url().optional(),
+        heroImages: z.array(z.string().url()),
+        galleryImages: z.array(z.string().url()),
+        imageStyle: z.string().optional(),
+        compositionDensity: densityModeSchema.optional(),
+        moodDescriptors: z.array(z.string()),
+        cardStyleHints: z.array(z.string()),
+        buttonStyleHints: z.array(z.string())
+      }),
+      structuralIdentity: z.object({
+        sectionMap: z.array(
+          z.object({
+            pageUrl: z.string().url(),
+            navLabel: z.string().optional(),
+            sectionTypeHint: z.string(),
+            heading: z.string().optional(),
+            order: z.number().int().min(0)
+          })
+        ),
+        structureSummary: z.object({
+          navItems: z.array(z.string()),
+          homepageSectionOrder: z.array(z.string()),
+          architectureType: z.enum(["immersive", "informational", "conversion", "corporate"]).optional(),
+          majorSectionCount: z.number().int().min(0),
+          repeatedPatterns: z.array(z.string())
+        })
+      }),
+      redesignOpportunities: z.array(z.string()),
+      sourceScreenshots: z.array(
+        z.object({
+          pageUrl: z.string().url(),
+          label: z.string(),
+          imageDataUrl: z.string().min(1)
+        })
+      )
+    })
+    .optional(),
+  redesignPlan: z
+    .object({
+      brandPositioning: z.string(),
+      visualMood: visualMoodSchema,
+      toneOfVoice: z.string(),
+      originalStructureSummary: z.string(),
+      preserveElements: z.array(z.string()),
+      improveElements: z.array(z.string()),
+      mergeElements: z.array(z.string()),
+      simplifyElements: z.array(z.string()),
+      elevateElements: z.array(z.string()),
+      suggestedSectionOrder: z.array(sectionTypeSchema),
+      layoutDirection: z.string(),
+      imageStrategy: z.string(),
+      typographyDirection: z.string(),
+      ctaStyle: z.string(),
+      premiumUpgradeNotes: z.array(z.string())
+    })
+    .optional(),
+  adaptiveSiteJson: z
+    .object({
+      heroVariant: z.enum(["split", "immersive", "centered", "showcase"]),
+      sectionPresentation: z.enum(["editorial", "cards", "minimal", "immersive", "corporate"]),
+      spacingRhythm: densityModeSchema,
+      imageProminence: z.enum(["low", "medium", "high"]),
+      typographyScale: z.enum(["compact", "balanced", "display"]),
+      navStyle: z.enum(["minimal", "glass", "solid"]),
+      animationStyle: z.enum(["subtle", "staggered", "cinematic"])
+    })
+    .optional()
 }) as z.ZodType<DemoSiteContent>;
 
 function isLegacyContent(input: unknown): input is { siteTitle?: string; category?: string; hero?: unknown; sections?: unknown[] } {

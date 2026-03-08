@@ -27,6 +27,8 @@ interface BrowserPageExtraction {
     emails: string[];
     addresses: string[];
   };
+  navItems: string[];
+  toneHints: string[];
 }
 
 const DEFAULT_MAX_PAGES = 5;
@@ -181,6 +183,9 @@ export async function extractStructuredBusinessContent(
   const contactPhones: string[] = [];
   const contactEmails: string[] = [];
   const contactAddresses: string[] = [];
+  const navItems: string[] = [];
+  const toneHints: string[] = [];
+  const screenshots: StructuredBusinessExtraction["screenshots"] = [];
 
   try {
     const context = await browser.newContext({
@@ -318,6 +323,10 @@ export async function extractStructuredBusinessContent(
             .map((anchor) => anchor.getAttribute("href") || "")
             .filter((href) => href && !href.startsWith("#") && !href.startsWith("javascript:"));
 
+          const navItems = Array.from(document.querySelectorAll("nav a, header a"))
+            .map((anchor) => normalizeText(anchor.textContent || ""))
+            .filter((label) => label.length >= 2 && label.length <= 40);
+
           const themeColors = [
             toHexColor(document.querySelector('meta[name="theme-color"]')?.getAttribute("content") || null),
             toHexColor(window.getComputedStyle(document.body).backgroundColor),
@@ -339,6 +348,21 @@ export async function extractStructuredBusinessContent(
           }
           if (document.querySelector("footer")) {
             pageHints.push("has-footer");
+          }
+
+          const toneHints: string[] = [];
+          const fullText = normalizeText(document.body?.innerText || "").toLowerCase();
+          if (/luxury|premium|exclusive|signature/.test(fullText)) {
+            toneHints.push("luxury");
+          }
+          if (/family|friendly|welcome|warm/.test(fullText)) {
+            toneHints.push("warm");
+          }
+          if (/trusted|professional|certified|reliable/.test(fullText)) {
+            toneHints.push("corporate");
+          }
+          if (/book|reserve|quote|appointment|schedule/.test(fullText)) {
+            toneHints.push("conversion");
           }
 
           const pageText = normalizeText(document.body?.innerText || "");
@@ -371,8 +395,25 @@ export async function extractStructuredBusinessContent(
               emails,
               addresses,
             },
+            navItems,
+            toneHints,
           };
         });
+
+        try {
+          const screenshotBuffer = await page.screenshot({
+            fullPage: false,
+            type: "jpeg",
+            quality: 45,
+          });
+          screenshots.push({
+            pageUrl: nextUrl,
+            label: pages.length === 0 ? "Homepage" : `Page ${pages.length + 1}`,
+            imageDataUrl: `data:image/jpeg;base64,${screenshotBuffer.toString("base64")}`,
+          });
+        } catch {
+          // Ignore screenshot failures per-page.
+        }
       } catch {
         extracted = null;
       } finally {
@@ -387,6 +428,8 @@ export async function extractStructuredBusinessContent(
       contactPhones.push(...extracted.contacts.phones);
       contactEmails.push(...extracted.contacts.emails);
       contactAddresses.push(...extracted.contacts.addresses);
+      navItems.push(...extracted.navItems);
+      toneHints.push(...extracted.toneHints);
 
       const images: ExtractedImageAsset[] = extracted.images
         .map((image): ExtractedImageAsset | null => {
@@ -525,5 +568,8 @@ export async function extractStructuredBusinessContent(
       }),
       10,
     ),
+    screenshots: screenshots.slice(0, 3),
+    navItems: uniqueStrings(navItems, 14),
+    toneHints: uniqueStrings(toneHints, 8),
   };
 }

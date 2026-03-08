@@ -15,7 +15,9 @@ Rules:
 3) Keep schema shape valid and stable.
 4) Prefer minimal changes that satisfy instruction.
 5) Keep section IDs stable when possible.
-6) Respect existing style/tone unless instruction asks otherwise.`;
+6) Respect existing style/tone unless instruction asks otherwise.
+7) Preserve source-business recognizability and avoid generic category-template language.
+8) Reuse extracted authentic wording and media cues when quality is sufficient.`;
 
 function getOpenAIClient(): OpenAI {
   const apiKey = process.env.OPENAI_API_KEY;

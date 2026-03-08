@@ -22,6 +22,121 @@ export type SectionType =
 
 export type ThemeTone = "premium" | "warm" | "corporate" | "luxury" | "modern";
 
+export type VisualMood =
+  | "editorial"
+  | "immersive"
+  | "minimal"
+  | "boutique"
+  | "corporate"
+  | "warm"
+  | "bold";
+
+export type DensityMode = "airy" | "balanced" | "dense";
+
+export type HeroLayoutVariant = "split" | "immersive" | "centered" | "showcase";
+
+export type SectionPresentation = "editorial" | "cards" | "minimal" | "immersive" | "corporate";
+
+export interface SourceBrandSignals {
+  businessName?: string;
+  slogan?: string;
+  brandColors?: string[];
+  typographyFeel?: string;
+  visualTone?: string;
+  trustStyle?: string;
+  positioning?: string;
+  toneOfVoice?: string;
+  ctaStyle?: string;
+}
+
+export interface SourceSectionMapItem {
+  pageUrl: string;
+  navLabel?: string;
+  sectionTypeHint: string;
+  heading?: string;
+  order: number;
+}
+
+export interface SourceStructureSummary {
+  navItems: string[];
+  homepageSectionOrder: string[];
+  architectureType?: "immersive" | "informational" | "conversion" | "corporate";
+  majorSectionCount: number;
+  repeatedPatterns: string[];
+}
+
+export interface SourceScreenshotAsset {
+  pageUrl: string;
+  label: string;
+  imageDataUrl: string;
+}
+
+export interface ExtractedSiteProfile {
+  sourceUrl: string;
+  extractedAt: string;
+  businessIdentity: SourceBrandSignals;
+  contentIdentity: {
+    headings: string[];
+    aboutText: string[];
+    services: string[];
+    faqs: Array<{ question: string; answer: string }>;
+    testimonials: string[];
+    trustSignals: string[];
+    reservationWording: string[];
+    locationWording: string[];
+    contactDetails: {
+      phones: string[];
+      emails: string[];
+      addresses: string[];
+      openingHours: string[];
+    };
+  };
+  visualIdentity: {
+    logoUrl?: string;
+    heroImages: string[];
+    galleryImages: string[];
+    imageStyle?: string;
+    compositionDensity?: DensityMode;
+    moodDescriptors: string[];
+    cardStyleHints: string[];
+    buttonStyleHints: string[];
+  };
+  structuralIdentity: {
+    sectionMap: SourceSectionMapItem[];
+    structureSummary: SourceStructureSummary;
+  };
+  redesignOpportunities: string[];
+  sourceScreenshots: SourceScreenshotAsset[];
+}
+
+export interface RedesignPlan {
+  brandPositioning: string;
+  visualMood: VisualMood;
+  toneOfVoice: string;
+  originalStructureSummary: string;
+  preserveElements: string[];
+  improveElements: string[];
+  mergeElements: string[];
+  simplifyElements: string[];
+  elevateElements: string[];
+  suggestedSectionOrder: SectionType[];
+  layoutDirection: string;
+  imageStrategy: string;
+  typographyDirection: string;
+  ctaStyle: string;
+  premiumUpgradeNotes: string[];
+}
+
+export interface AdaptiveSiteComposition {
+  heroVariant: HeroLayoutVariant;
+  sectionPresentation: SectionPresentation;
+  spacingRhythm: DensityMode;
+  imageProminence: "low" | "medium" | "high";
+  typographyScale: "compact" | "balanced" | "display";
+  navStyle: "minimal" | "glass" | "solid";
+  animationStyle: "subtle" | "staggered" | "cinematic";
+}
+
 export interface BusinessInfo {
   name: string;
   category: BusinessCategory;
@@ -225,6 +340,9 @@ export interface DemoSiteContent {
   seo: SeoConfig;
   contact: SiteContactConfig;
   sections: DemoSection[];
+  extractedSiteProfile?: ExtractedSiteProfile;
+  redesignPlan?: RedesignPlan;
+  adaptiveSiteJson?: AdaptiveSiteComposition;
 }
 
 export interface DemoSiteRecord {
@@ -239,6 +357,12 @@ export interface DemoSiteRecord {
   createdAt: string;
   updatedAt: string;
   generatedContent: DemoSiteContent;
+  extractedSiteProfileJson?: ExtractedSiteProfile;
+  redesignPlanJson?: RedesignPlan;
+  adaptiveSiteJson?: AdaptiveSiteComposition;
+  sourceScreenshotsJson?: SourceScreenshotAsset[];
+  sourceStructureJson?: SourceStructureSummary;
+  sourceBrandSignalsJson?: SourceBrandSignals;
 }
 
 export interface DemoSiteVersion {

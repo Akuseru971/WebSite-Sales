@@ -1,4 +1,5 @@
-import type { DemoSection } from "@/lib/demo-sites/types";
+import type { AdaptiveSiteComposition, DemoSection } from "@/lib/demo-sites/types";
+import { cn } from "@/lib/utils";
 import { AboutSection } from "@/components/demo-site/sections/about-section";
 import { ServicesSection } from "@/components/demo-site/sections/services-section";
 import { MenuHighlightsSection } from "@/components/demo-site/sections/menu-highlights-section";
@@ -14,9 +15,10 @@ import { ContactSection } from "@/components/demo-site/sections/contact-section"
 
 interface SectionRendererProps {
   section: DemoSection;
+  composition?: AdaptiveSiteComposition;
 }
 
-export function SectionRenderer({ section }: SectionRendererProps) {
+function renderSection(section: DemoSection) {
   switch (section.type) {
     case "hero":
       return null;
@@ -53,4 +55,24 @@ export function SectionRenderer({ section }: SectionRendererProps) {
     default:
       return null;
   }
+}
+
+export function SectionRenderer({ section, composition }: SectionRendererProps) {
+  const sectionMood = section.styleVariant ?? composition?.sectionPresentation ?? "editorial";
+  const density = composition?.spacingRhythm ?? "balanced";
+
+  return (
+    <div
+      className={cn(
+        "adaptive-section",
+        density === "airy" && "adaptive-density-airy",
+        density === "dense" && "adaptive-density-dense",
+        sectionMood === "immersive" && "adaptive-mood-immersive",
+        sectionMood === "corporate" && "adaptive-mood-corporate",
+        sectionMood === "minimal" && "adaptive-mood-minimal",
+      )}
+    >
+      {renderSection(section)}
+    </div>
+  );
 }

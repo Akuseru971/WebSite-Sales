@@ -79,7 +79,10 @@ export async function POST(request: Request) {
       enrichment: {
         hasStructuredExtraction: Boolean(enriched.extractedWebsite),
         imageCount: enriched.suggestedImages.length,
-        menuHintCount: enriched.inferredMenuItems.length
+        menuHintCount: enriched.inferredMenuItems.length,
+        redesignPlanReady: Boolean(content.redesignPlan),
+        extractedProfileReady: Boolean(content.extractedSiteProfile),
+        adaptiveCompositionReady: Boolean(content.adaptiveSiteJson),
       }
     });
   } catch (error) {

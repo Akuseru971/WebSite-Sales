@@ -30,6 +30,12 @@ export interface ExtractedThemeHints {
   accentColor?: string;
 }
 
+export interface ExtractedScreenshot {
+  pageUrl: string;
+  label: string;
+  imageDataUrl: string;
+}
+
 export interface StructuredBusinessExtraction {
   sourceWebsite: string;
   crawledAt: string;
@@ -44,4 +50,7 @@ export interface StructuredBusinessExtraction {
   contact: ExtractedContactDetails;
   themeHints: ExtractedThemeHints;
   pageStructureHints: string[];
+  screenshots: ExtractedScreenshot[];
+  navItems: string[];
+  toneHints: string[];
 }

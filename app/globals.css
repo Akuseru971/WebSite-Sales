@@ -5,6 +5,9 @@
 :root {
   --background: #f7f3ee;
   --foreground: #111015;
+  --theme-primary: #111015;
+  --theme-secondary: #f7f3ee;
+  --theme-accent: #a86f3f;
 }
 
 body {
@@ -44,6 +47,30 @@ body {
 
   .card-premium {
     @apply rounded-3xl border border-zinc-200/80 bg-white/90 shadow-soft transition duration-300 hover:-translate-y-1 hover:shadow-premium;
+  }
+
+  .adaptive-section {
+    transition: transform 260ms ease, opacity 260ms ease;
+  }
+
+  .adaptive-density-airy .section-shell {
+    @apply py-24 md:py-32;
+  }
+
+  .adaptive-density-dense .section-shell {
+    @apply py-14 md:py-20;
+  }
+
+  .adaptive-mood-immersive .card-premium {
+    @apply border-zinc-700/60 bg-zinc-900/70 text-zinc-100;
+  }
+
+  .adaptive-mood-corporate .card-premium {
+    @apply rounded-2xl border-zinc-300 bg-white;
+  }
+
+  .adaptive-mood-minimal .card-premium {
+    @apply rounded-2xl border-zinc-200 bg-white/80 shadow-none;
   }
 
   .grain-overlay {

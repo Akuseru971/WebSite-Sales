@@ -5,6 +5,12 @@ import type { EnrichedCommerceLead } from "@/lib/leads/enrichment";
 import type { StructuredBusinessExtraction } from "@/lib/leads/extraction/types";
 import { validateDemoSiteContent } from "./validation";
 import { inferLocaleProfile } from "@/lib/i18n/locale";
+import {
+  analyzeSourceWebsiteIdentity,
+  applyRedesignPlanToSections,
+  createRedesignPlan,
+  generateAdaptiveDemoSiteJson,
+} from "@/lib/demo-sites/redesign-intelligence";
 
 function deepClone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -210,6 +216,8 @@ function buildPrompt(params: {
   style: DemoSiteStyle;
   siteLabel: string;
   enriched: EnrichedCommerceLead;
+  siteProfileSummary: string;
+  redesignPlanSummary: string;
 }): string {
   const { category, style, siteLabel, enriched } = params;
   const lead = enriched.lead;
@@ -235,11 +243,19 @@ function buildPrompt(params: {
     `Image candidates: ${enriched.suggestedImages.join(" | ") || "none"}`,
     `Structured extraction (primary source, use this first):`,
     summarizeExtractionForPrompt(enriched.extractedWebsite),
+    `Extracted site profile (identity layer):`,
+    params.siteProfileSummary,
+    `Redesign plan (agency strategy layer):`,
+    params.redesignPlanSummary,
     `Requirements:`,
     `- Keep all JSON schema fields valid.`,
     `- Write ALL website copy in ${locale.languageLabel} (${locale.language}).`,
+    `- Preserve business recognizability and authentic identity cues.`,
+    `- Preserve strong source phrasing and media when quality is good.`,
+    `- Fill missing details only when necessary and keep them generic.`,
     `- Make copy persuasive and local to the city.`,
     `- Use structured extraction text first before any fallback text.`,
+    `- Do not flatten output into a category-generic template voice.`,
     `- Reuse real headings and service copy when available.`,
     `- Use menu hints when category is restaurant.`,
     `- Use images provided when relevant sections exist.`,
@@ -255,20 +271,46 @@ export async function generateDemoSiteContentWithAI(params: {
   enriched: EnrichedCommerceLead;
 }): Promise<DemoSiteContent> {
   const baseTemplate = getBaseTemplate(params.category);
-  const baseContent = applyLeadFacts(baseTemplate, {
+  let baseContent = applyLeadFacts(baseTemplate, {
     category: params.category,
     style: params.style,
     enriched: params.enriched
   });
 
+  const extractedSiteProfile = analyzeSourceWebsiteIdentity(params.enriched);
+  const redesignPlan = await createRedesignPlan(extractedSiteProfile);
+  const adaptiveSiteJson = generateAdaptiveDemoSiteJson(redesignPlan, baseContent);
+
+  baseContent = {
+    ...baseContent,
+    extractedSiteProfile,
+    redesignPlan,
+    adaptiveSiteJson,
+    sections: applyRedesignPlanToSections({
+      content: baseContent,
+      plan: redesignPlan,
+    }),
+  };
+
+  const siteProfileSummary = JSON.stringify(extractedSiteProfile, null, 2);
+  const redesignPlanSummary = JSON.stringify(redesignPlan, null, 2);
+
   try {
-    const instruction = buildPrompt(params);
     const result = await updateDemoSiteJsonWithAI({
       currentContent: baseContent,
-      instruction
+      instruction: buildPrompt({
+        ...params,
+        siteProfileSummary,
+        redesignPlanSummary,
+      })
     });
 
-    return validateDemoSiteContent(result.suggestedContent);
+    return validateDemoSiteContent({
+      ...result.suggestedContent,
+      extractedSiteProfile,
+      redesignPlan,
+      adaptiveSiteJson,
+    });
   } catch {
     // Fallback to deterministic remodeling if AI response fails.
     return baseContent;
