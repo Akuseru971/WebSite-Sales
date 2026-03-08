@@ -531,6 +531,19 @@ export async function generateDemoSiteContentWithAI(params: {
   siteLabel: string;
   enriched: EnrichedCommerceLead;
 }): Promise<DemoSiteContent> {
+  if (
+    params.enriched.lead.website &&
+    (!params.enriched.extractedWebsite ||
+      (params.enriched.extractedWebsite.keyHeadings.length === 0 &&
+        params.enriched.extractedWebsite.aboutText.length === 0 &&
+        params.enriched.extractedWebsite.serviceDescriptions.length === 0 &&
+        params.enriched.suggestedImages.length === 0))
+  ) {
+    throw new Error(
+      "Impossible d'extraire suffisamment de contenu depuis le site source. Verifie que le site est accessible publiquement.",
+    );
+  }
+
   const lead = params.enriched.lead;
   const locale = params.enriched.locale ?? inferLocaleProfile(lead.country);
 
