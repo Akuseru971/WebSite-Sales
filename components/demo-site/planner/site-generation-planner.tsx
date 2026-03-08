@@ -132,6 +132,19 @@ function initialCategoryMap(): Record<BusinessCategory, boolean> {
   };
 }
 
+function getLeadWebsiteUrl(website?: string): string | null {
+  if (!website) {
+    return null;
+  }
+
+  const trimmed = website.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  return trimmed.startsWith("http") ? trimmed : `https://${trimmed}`;
+}
+
 async function searchLeads(params: {
   city: string;
   categories: BusinessCategory[];
@@ -203,6 +216,8 @@ export function SiteGenerationPlanner({ referenceSites }: SiteGenerationPlannerP
 
     return fetchedLeads.find((lead) => lead.id === selectedLeadId) ?? null;
   }, [fetchedLeads, selectedLeadId]);
+
+  const selectedLeadWebsiteUrl = selectedLead ? getLeadWebsiteUrl(selectedLead.website) : null;
 
   const availableSiteOptions = selectedLead ? siteOptionsByCategory[selectedLead.category] : [];
 
@@ -449,29 +464,64 @@ export function SiteGenerationPlanner({ referenceSites }: SiteGenerationPlannerP
                 <div className="mt-3 grid gap-3 md:grid-cols-2">
                   {categoryLeads.map((lead) => {
                     const isSelected = selectedLeadId === lead.id;
+                    const websiteUrl = getLeadWebsiteUrl(lead.website);
 
                     return (
-                      <button
+                      <div
                         key={lead.id}
-                        type="button"
-                        onClick={() => chooseLead(lead.id)}
-                        className={`rounded-xl border p-3 text-left transition ${
+                        className={`rounded-xl border p-3 transition ${
                           isSelected
                             ? "border-ink bg-zinc-900 text-white"
-                            : "border-zinc-200 bg-zinc-50 text-zinc-800 hover:border-zinc-300"
+                            : "border-zinc-200 bg-zinc-50 text-zinc-800"
                         }`}
                       >
-                        <p className="text-sm font-semibold">{lead.businessName}</p>
-                        <p className={`mt-1 text-xs ${isSelected ? "text-zinc-300" : "text-zinc-600"}`}>
-                          {lead.city}
-                          {lead.district ? ` - ${lead.district}` : ""}
-                        </p>
-                        {lead.contactName ? (
-                          <p className={`mt-2 text-xs ${isSelected ? "text-zinc-200" : "text-zinc-600"}`}>
-                            Contact: {lead.contactName}
+                        <button
+                          type="button"
+                          onClick={() => chooseLead(lead.id)}
+                          className="w-full text-left"
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="text-sm font-semibold">{lead.businessName}</p>
+                            <span
+                              className={`rounded-full px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em] ${
+                                websiteUrl
+                                  ? isSelected
+                                    ? "bg-emerald-500/20 text-emerald-200"
+                                    : "bg-emerald-100 text-emerald-700"
+                                  : isSelected
+                                    ? "bg-zinc-700 text-zinc-200"
+                                    : "bg-zinc-200 text-zinc-700"
+                              }`}
+                            >
+                              {websiteUrl ? "Site disponible" : "Pas de site detecte"}
+                            </span>
+                          </div>
+                          <p className={`mt-1 text-xs ${isSelected ? "text-zinc-300" : "text-zinc-600"}`}>
+                            {lead.city}
+                            {lead.district ? ` - ${lead.district}` : ""}
                           </p>
+                          {lead.contactName ? (
+                            <p className={`mt-2 text-xs ${isSelected ? "text-zinc-200" : "text-zinc-600"}`}>
+                              Contact: {lead.contactName}
+                            </p>
+                          ) : null}
+                        </button>
+
+                        {websiteUrl ? (
+                          <Link
+                            href={websiteUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`mt-3 inline-flex rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                              isSelected
+                                ? "border-zinc-500 bg-zinc-800 text-zinc-100"
+                                : "border-zinc-300 bg-white text-zinc-700"
+                            }`}
+                          >
+                            Ouvrir le site
+                          </Link>
                         ) : null}
-                      </button>
+                      </div>
                     );
                   })}
                 </div>
@@ -490,6 +540,27 @@ export function SiteGenerationPlanner({ referenceSites }: SiteGenerationPlannerP
             <p className="mt-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
               Commerce selectionne: <span className="font-semibold">{selectedLead.businessName}</span>
             </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <span
+                className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.08em] ${
+                  selectedLead.website
+                    ? "bg-emerald-100 text-emerald-700"
+                    : "bg-zinc-200 text-zinc-700"
+                }`}
+              >
+                {selectedLead.website ? "Site disponible" : "Pas de site detecte"}
+              </span>
+              {selectedLeadWebsiteUrl ? (
+                <Link
+                  href={selectedLeadWebsiteUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-full border border-zinc-300 bg-white px-3 py-1 text-xs font-semibold text-zinc-700"
+                >
+                  Ouvrir le site du commerce
+                </Link>
+              ) : null}
+            </div>
 
             <div className="mt-4 space-y-3">
               {availableSiteOptions.map((option) => {
