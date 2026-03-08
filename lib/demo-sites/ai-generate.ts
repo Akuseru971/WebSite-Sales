@@ -1,5 +1,4 @@
 import type { BusinessCategory, DemoSiteContent, DemoSiteStyle, DemoSection } from "./types";
-import { SEEDED_DEMO_SITES } from "./defaults";
 import { updateDemoSiteJsonWithAI } from "./ai-edit";
 import type { EnrichedCommerceLead } from "@/lib/leads/enrichment";
 import type { StructuredBusinessExtraction } from "@/lib/leads/extraction/types";
@@ -16,9 +15,250 @@ function deepClone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
-function getBaseTemplate(category: BusinessCategory): DemoSiteContent {
-  const fallback = SEEDED_DEMO_SITES.find((site) => site.templateType === category) ?? SEEDED_DEMO_SITES[0];
-  return deepClone(fallback.generatedContent);
+function createSection<TType extends DemoSection["type"]>(
+  type: TType,
+  order: number,
+  content: Extract<DemoSection, { type: TType }>["content"],
+): Extract<DemoSection, { type: TType }> {
+  return {
+    id: `${type}-${order}`,
+    type,
+    enabled: true,
+    order,
+    styleVariant: "adaptive",
+    content,
+  } as Extract<DemoSection, { type: TType }>;
+}
+
+function fallbackTheme(style: DemoSiteStyle) {
+  switch (style) {
+    case "luxury":
+      return {
+        primaryColor: "#14110f",
+        secondaryColor: "#f3ede6",
+        accentColor: "#b88a44",
+        tone: "luxury" as const,
+      };
+    case "corporate":
+      return {
+        primaryColor: "#10233c",
+        secondaryColor: "#f4f8fc",
+        accentColor: "#1e74d8",
+        tone: "corporate" as const,
+      };
+    case "urban":
+      return {
+        primaryColor: "#111827",
+        secondaryColor: "#f5f7fa",
+        accentColor: "#00a6a6",
+        tone: "modern" as const,
+      };
+    case "atmospheric":
+    default:
+      return {
+        primaryColor: "#1f1a17",
+        secondaryColor: "#f7f2ea",
+        accentColor: "#a86f3f",
+        tone: "premium" as const,
+      };
+  }
+}
+
+function createAdaptiveBaseContent(params: {
+  category: BusinessCategory;
+  style: DemoSiteStyle;
+  enriched: EnrichedCommerceLead;
+}): DemoSiteContent {
+  const { category, style, enriched } = params;
+  const lead = enriched.lead;
+  const locale = enriched.locale ?? inferLocaleProfile(lead.country);
+  const extracted = enriched.extractedWebsite;
+  const extractedCopy = getPrimaryCopyFromExtraction(extracted);
+  const theme = fallbackTheme(style);
+
+  const sections: DemoSection[] = [];
+  let order = 0;
+
+  sections.push(
+    createSection("hero", order++, {
+      badge: `${lead.city} ${category.replace("_", " ")}`,
+      title: extractedCopy.heroTitle ?? lead.businessName,
+      subtitle: extractedCopy.heroSubtitle ?? enriched.inferredDescription ?? `${lead.businessName} in ${lead.city}`,
+      primaryCta: { label: extractedCopy.ctaText ?? "Contact us", href: "#contact" },
+      secondaryCta: { label: "Discover", href: "#about" },
+      image: enriched.suggestedImages[0],
+    }),
+  );
+
+  sections.push(
+    createSection("about", order++, {
+      title: extracted?.keyHeadings.find((heading) => /about|story|mission|team/i.test(heading)) ?? `About ${lead.businessName}`,
+      body: extractedCopy.aboutParagraph ?? enriched.inferredDescription ?? `${lead.businessName} serves ${lead.city}.`,
+      bullets: extracted?.keyHeadings.slice(0, 4),
+    }),
+  );
+
+  const serviceItems = (extractedCopy.serviceParagraphs.length ? extractedCopy.serviceParagraphs : [
+    `${lead.businessName} provides tailored services for local clients in ${lead.city}.`,
+    `Our team focuses on reliable quality and transparent communication.`,
+    `Contact us for a personalized recommendation and pricing details.`,
+  ]).slice(0, 6);
+
+  sections.push(
+    createSection("services", order++, {
+      title: extracted?.keyHeadings.find((heading) => /service|offer|solution|menu/i.test(heading)) ?? "Our services",
+      subtitle: "Designed around your goals",
+      items: serviceItems.map((description, index) => ({
+        title: extracted?.keyHeadings[index + 1] ?? `Service ${index + 1}`,
+        description,
+      })),
+    }),
+  );
+
+  if (category === "restaurant" && enriched.inferredMenuItems.length > 0) {
+    sections.push(
+      createSection("menu_highlights", order++, {
+        title: "Menu highlights",
+        items: enriched.inferredMenuItems.slice(0, 6).map((line, index) => ({
+          name: `Selection ${index + 1}`,
+          description: line,
+          image: enriched.suggestedImages[index] ?? enriched.suggestedImages[0],
+        })),
+      }),
+    );
+  }
+
+  if (category === "hotel" && serviceItems.length > 0) {
+    sections.push(
+      createSection("room_highlights", order++, {
+        title: "Stay highlights",
+        items: serviceItems.slice(0, 4).map((description, index) => ({
+          name: extracted?.keyHeadings[index + 1] ?? `Suite ${index + 1}`,
+          description,
+          image: enriched.suggestedImages[index] ?? enriched.suggestedImages[0],
+        })),
+      }),
+    );
+  }
+
+  if (category === "real_estate" && serviceItems.length > 0) {
+    sections.push(
+      createSection("featured_properties", order++, {
+        title: "Featured opportunities",
+        subtitle: `${lead.city} market insights`,
+        items: serviceItems.slice(0, 4).map((description, index) => ({
+          title: extracted?.keyHeadings[index + 1] ?? `Property ${index + 1}`,
+          location: lead.city,
+          priceHint: "Price on request",
+          type: "Curated",
+          image: enriched.suggestedImages[index] ?? enriched.suggestedImages[0],
+        })),
+      }),
+    );
+  }
+
+  if (enriched.suggestedImages.length > 0) {
+    sections.push(
+      createSection("gallery", order++, {
+        title: "Gallery",
+        items: enriched.suggestedImages.slice(0, 8).map((image, index) => ({
+          image,
+          alt: `${lead.businessName} image ${index + 1}`,
+        })),
+      }),
+    );
+  }
+
+  if ((extracted?.ctaPhrases.length ?? 0) > 0) {
+    sections.push(
+      createSection("stats", order++, {
+        title: "Why choose us",
+        items: extracted!.ctaPhrases.slice(0, 3).map((phrase, index) => ({
+          label: `Benefit ${index + 1}`,
+          value: phrase,
+        })),
+      }),
+    );
+  }
+
+  const testimonials = extracted?.pages
+    .flatMap((page) => page.paragraphs)
+    .filter((line) => /review|testimonial|client|customer|"/i.test(line))
+    .slice(0, 3);
+
+  if (testimonials && testimonials.length > 0) {
+    sections.push(
+      createSection("testimonials", order++, {
+        title: "Client feedback",
+        items: testimonials.map((quote, index) => ({
+          quote,
+          author: `Client ${index + 1}`,
+        })),
+      }),
+    );
+  }
+
+  sections.push(
+    createSection("cta", order++, {
+      title: `Work with ${lead.businessName}`,
+      body: `Discuss your project with our team in ${lead.city}.`,
+      action: {
+        label: extractedCopy.ctaText ?? "Get in touch",
+        href: "#contact",
+      },
+    }),
+  );
+
+  sections.push(
+    createSection("contact", order++, {
+      title: `Contact ${lead.businessName}`,
+      address: lead.address,
+      phone: lead.phone,
+      email: lead.email,
+      hours: lead.openingHours ? [lead.openingHours] : undefined,
+      mapsUrl: lead.latitude && lead.longitude ? `https://www.google.com/maps?q=${lead.latitude},${lead.longitude}` : undefined,
+    }),
+  );
+
+  return validateDemoSiteContent({
+    businessInfo: {
+      name: lead.businessName,
+      category,
+      city: lead.city,
+      country: lead.country ?? locale.country,
+      address: lead.address,
+      phone: lead.phone,
+      email: lead.email,
+      tagline: enriched.inferredDescription,
+      shortDescription: enriched.inferredDescription,
+    },
+    theme: {
+      primaryColor: extracted?.themeHints.primaryColor ?? theme.primaryColor,
+      secondaryColor: extracted?.themeHints.secondaryColor ?? theme.secondaryColor,
+      accentColor: extracted?.themeHints.accentColor ?? theme.accentColor,
+      backgroundStyle: style,
+      headingFont: "Playfair Display",
+      bodyFont: "Manrope",
+      buttonVariant: "solid",
+      borderRadius: "soft",
+      tone: theme.tone,
+    },
+    seo: {
+      metaTitle: `${lead.businessName} | ${lead.city}`,
+      metaDescription: enriched.inferredDescription ?? `${lead.businessName} in ${lead.city}`,
+      ogTitle: `${lead.businessName} - Premium redesign`,
+      ogDescription: enriched.inferredDescription ?? `${lead.businessName} in ${lead.city}`,
+    },
+    contact: {
+      contactName: lead.businessName,
+      email: lead.email,
+      phone: lead.phone,
+      bookingEnabled: true,
+      formEnabled: true,
+      openingHours: lead.openingHours ? [lead.openingHours] : undefined,
+    },
+    sections,
+  });
 }
 
 function findSection<TType extends DemoSection["type"]>(
@@ -270,8 +510,13 @@ export async function generateDemoSiteContentWithAI(params: {
   siteLabel: string;
   enriched: EnrichedCommerceLead;
 }): Promise<DemoSiteContent> {
-  const baseTemplate = getBaseTemplate(params.category);
-  let baseContent = applyLeadFacts(baseTemplate, {
+  let baseContent = createAdaptiveBaseContent({
+    category: params.category,
+    style: params.style,
+    enriched: params.enriched,
+  });
+
+  baseContent = applyLeadFacts(baseContent, {
     category: params.category,
     style: params.style,
     enriched: params.enriched

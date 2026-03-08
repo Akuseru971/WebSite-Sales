@@ -45,7 +45,7 @@ export function TemplateShell({ site, className, children }: TemplateShellProps)
             <p className={cn("truncate font-[var(--font-heading)] text-2xl leading-tight", isSolidNav ? "text-white" : "text-ink")}>{site.generatedContent.businessInfo.name}</p>
           </div>
           <span className={cn("ml-4 rounded-full px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em]", isSolidNav ? "border border-zinc-700 bg-zinc-800 text-zinc-100" : "border border-zinc-300/70 bg-white/90 text-zinc-600")}>
-            {site.templateType.replace("_", " ")}
+            {site.generatedContent.redesignPlan?.visualMood ?? site.templateType.replace("_", " ")}
           </span>
         </header>
         {children}
