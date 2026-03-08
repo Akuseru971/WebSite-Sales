@@ -77,7 +77,7 @@ export async function POST(request: Request) {
       locale: enriched.locale,
       outreachEmail,
       enrichment: {
-        hasWebsiteData: Boolean(enriched.websiteData),
+        hasStructuredExtraction: Boolean(enriched.extractedWebsite),
         imageCount: enriched.suggestedImages.length,
         menuHintCount: enriched.inferredMenuItems.length
       }
