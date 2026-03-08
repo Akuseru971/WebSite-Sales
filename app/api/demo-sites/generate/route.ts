@@ -5,6 +5,7 @@ import { requireAuthenticatedUserId } from "@/lib/supabase/auth";
 import { enrichCommerceLead } from "@/lib/leads/enrichment";
 import { generateDemoSiteContentWithAI } from "@/lib/demo-sites/ai-generate";
 import { createGeneratedDemoSite } from "@/lib/demo-sites/repository";
+import { buildOutreachEmailDraft } from "@/lib/leads/outreach-email";
 
 interface GenerationRequestBody {
   lead: CommerceLead;
@@ -66,8 +67,15 @@ export async function POST(request: Request) {
       changeNote: `Generated from lead ${body.lead.businessName} (${body.siteOption.label})`
     });
 
+    const outreachEmail = buildOutreachEmailDraft({
+      enriched,
+      generatedContent: content
+    });
+
     return NextResponse.json({
       site,
+      locale: enriched.locale,
+      outreachEmail,
       enrichment: {
         hasWebsiteData: Boolean(enriched.websiteData),
         imageCount: enriched.suggestedImages.length,

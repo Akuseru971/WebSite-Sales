@@ -41,6 +41,9 @@ interface PlannedGeneration {
   createdSiteId?: string;
   createdSitePreviewUrl?: string;
   createdSiteEditorUrl?: string;
+  generatedLanguage?: string;
+  outreachEmailSubject?: string;
+  outreachEmailBody?: string;
   referencePreviewUrl?: string;
   referenceEditorUrl?: string;
 }
@@ -344,6 +347,9 @@ export function SiteGenerationPlanner({ referenceSites }: SiteGenerationPlannerP
 
       const siteId = payload.site?.id as string | undefined;
       const previewUrl = payload.site?.previewUrl as string | undefined;
+      const localeLanguage = payload.locale?.language as string | undefined;
+      const outreachEmailSubject = payload.outreachEmail?.subject as string | undefined;
+      const outreachEmailBody = payload.outreachEmail?.body as string | undefined;
 
       setPlannedGenerations((previous) =>
         previous.map((item) =>
@@ -353,7 +359,10 @@ export function SiteGenerationPlanner({ referenceSites }: SiteGenerationPlannerP
                 status: "generated",
                 createdSiteId: siteId,
                 createdSitePreviewUrl: previewUrl,
-                createdSiteEditorUrl: siteId ? `/dashboard/demos/${siteId}/editor` : undefined
+                createdSiteEditorUrl: siteId ? `/dashboard/demos/${siteId}/editor` : undefined,
+                generatedLanguage: localeLanguage,
+                outreachEmailSubject,
+                outreachEmailBody
               }
             : item
         )
@@ -628,10 +637,30 @@ export function SiteGenerationPlanner({ referenceSites }: SiteGenerationPlannerP
                   <p className="mt-1 text-xs uppercase tracking-[0.08em] text-zinc-500">
                     Statut: {plan.status}
                   </p>
+                  {plan.generatedLanguage ? (
+                    <p className="mt-1 text-xs uppercase tracking-[0.08em] text-zinc-500">
+                      Langue generee: {plan.generatedLanguage}
+                    </p>
+                  ) : null}
                   {plan.errorMessage ? (
                     <p className="mt-2 rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-xs text-rose-700">
                       {plan.errorMessage}
                     </p>
+                  ) : null}
+                  {plan.outreachEmailSubject ? (
+                    <div className="mt-2 rounded-lg border border-zinc-200 bg-white px-3 py-2">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-500">
+                        Mail d&apos;envoi (adapte pays/langue)
+                      </p>
+                      <p className="mt-1 text-xs text-zinc-700">
+                        <span className="font-semibold">Objet:</span> {plan.outreachEmailSubject}
+                      </p>
+                      {plan.outreachEmailBody ? (
+                        <pre className="mt-2 whitespace-pre-wrap rounded bg-zinc-50 p-2 text-[11px] text-zinc-700">
+                          {plan.outreachEmailBody}
+                        </pre>
+                      ) : null}
+                    </div>
                   ) : null}
                   <div className="mt-3 flex flex-wrap gap-2">
                     {plan.status !== "generated" ? (

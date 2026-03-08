@@ -1,4 +1,6 @@
 import type { CommerceLead } from "./types";
+import type { LocaleProfile } from "@/lib/i18n/locale";
+import { inferLocaleProfile } from "@/lib/i18n/locale";
 
 interface WebsiteExtraction {
   sourceUrl: string;
@@ -12,10 +14,31 @@ interface WebsiteExtraction {
 
 export interface EnrichedCommerceLead {
   lead: CommerceLead;
+  locale: LocaleProfile;
   websiteData?: WebsiteExtraction;
   inferredDescription?: string;
   inferredMenuItems: string[];
   suggestedImages: string[];
+}
+
+function fallbackDescription(lead: CommerceLead, locale: LocaleProfile): string {
+  switch (locale.language) {
+    case "fr":
+      return `${lead.businessName} est un commerce ${lead.category.replace("_", " ")} situe a ${lead.city}.`;
+    case "es":
+      return `${lead.businessName} es un negocio de ${lead.category.replace("_", " ")} en ${lead.city}.`;
+    case "de":
+      return `${lead.businessName} ist ein ${lead.category.replace("_", " ")}-Unternehmen in ${lead.city}.`;
+    case "it":
+      return `${lead.businessName} e un'attivita ${lead.category.replace("_", " ")} a ${lead.city}.`;
+    case "pt":
+      return `${lead.businessName} e um negocio de ${lead.category.replace("_", " ")} em ${lead.city}.`;
+    case "nl":
+      return `${lead.businessName} is een ${lead.category.replace("_", " ")}-bedrijf in ${lead.city}.`;
+    case "en":
+    default:
+      return `${lead.businessName} is a ${lead.category.replace("_", " ")} business in ${lead.city}.`;
+  }
 }
 
 function getTimeoutMs(): number {
@@ -160,6 +183,7 @@ async function extractWebsiteData(website: string): Promise<WebsiteExtraction | 
 }
 
 export async function enrichCommerceLead(lead: CommerceLead): Promise<EnrichedCommerceLead> {
+  const locale = inferLocaleProfile(lead.country);
   const websiteData = lead.website ? await extractWebsiteData(lead.website) : undefined;
 
   const inferredDescription =
@@ -167,13 +191,15 @@ export async function enrichCommerceLead(lead: CommerceLead): Promise<EnrichedCo
     websiteData?.metaDescription ??
     (websiteData?.pageTitle
       ? `${websiteData.pageTitle} - ${lead.city}`
-      : `${lead.businessName} is a ${lead.category.replace("_", " ")} business in ${lead.city}.`);
+      : fallbackDescription(lead, locale));
 
   return {
     lead: {
       ...lead,
+      country: lead.country ?? locale.country,
       source: websiteData ? "hybrid" : lead.source
     },
+    locale,
     websiteData,
     inferredDescription,
     inferredMenuItems: websiteData?.menuHints ?? [],

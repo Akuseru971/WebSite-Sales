@@ -221,7 +221,7 @@ export async function searchCommerceLeads(params: {
           .filter(Boolean)
           .join(" ") || undefined,
         postcode: element.tags?.["addr:postcode"],
-        country: element.tags?.["addr:country"],
+        country: element.tags?.["addr:country"] ?? country,
         district:
           element.tags?.["addr:suburb"] ??
           element.tags?.["addr:city_district"] ??

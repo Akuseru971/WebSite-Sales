@@ -3,6 +3,7 @@ import { SEEDED_DEMO_SITES } from "./defaults";
 import { updateDemoSiteJsonWithAI } from "./ai-edit";
 import type { EnrichedCommerceLead } from "@/lib/leads/enrichment";
 import { validateDemoSiteContent } from "./validation";
+import { inferLocaleProfile } from "@/lib/i18n/locale";
 
 function deepClone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -29,21 +30,31 @@ function applyLeadFacts(content: DemoSiteContent, params: {
 }): DemoSiteContent {
   const { enriched, category } = params;
   const lead = enriched.lead;
+  const locale = enriched.locale ?? inferLocaleProfile(lead.country);
   const next = deepClone(content);
 
   next.businessInfo.name = lead.businessName;
   next.businessInfo.category = category;
   next.businessInfo.city = lead.city;
-  next.businessInfo.country = lead.country ?? "France";
+  next.businessInfo.country = lead.country ?? locale.country;
   next.businessInfo.address = lead.address;
   next.businessInfo.phone = lead.phone;
-  next.businessInfo.email = lead.email;
+  const normalizedBusinessName = lead.businessName
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, "")
+    .trim()
+    .replace(/\s+/g, "");
+  const autoEmail = normalizedBusinessName
+    ? `contact@${normalizedBusinessName}.${locale.ccTld}`
+    : undefined;
+
+  next.businessInfo.email = lead.email ?? autoEmail;
   next.businessInfo.shortDescription = enriched.inferredDescription;
   next.businessInfo.tagline = enriched.inferredDescription;
 
   next.contact.contactName = lead.businessName;
   next.contact.phone = lead.phone;
-  next.contact.email = lead.email;
+  next.contact.email = lead.email ?? autoEmail;
   next.contact.openingHours = lead.openingHours ? [lead.openingHours] : next.contact.openingHours;
 
   const hero = findSection(next, "hero");
@@ -63,7 +74,7 @@ function applyLeadFacts(content: DemoSiteContent, params: {
     contact.content.title = `Contact ${lead.businessName}`;
     contact.content.address = lead.address ?? contact.content.address;
     contact.content.phone = lead.phone ?? contact.content.phone;
-    contact.content.email = lead.email ?? contact.content.email;
+    contact.content.email = lead.email ?? autoEmail ?? contact.content.email;
     contact.content.hours = lead.openingHours ? [lead.openingHours] : contact.content.hours;
     if (lead.latitude && lead.longitude) {
       contact.content.mapsUrl = `https://www.google.com/maps?q=${lead.latitude},${lead.longitude}`;
@@ -99,6 +110,7 @@ function buildPrompt(params: {
 }): string {
   const { category, style, siteLabel, enriched } = params;
   const lead = enriched.lead;
+  const locale = enriched.locale ?? inferLocaleProfile(lead.country);
 
   return [
     `Remodel this website content for a real business using verified facts only.`,
@@ -111,12 +123,16 @@ function buildPrompt(params: {
     `Phone: ${lead.phone ?? "unknown"}`,
     `Email: ${lead.email ?? "unknown"}`,
     `Website: ${lead.website ?? "unknown"}`,
+    `Country: ${lead.country ?? locale.country}`,
+    `Target language code: ${locale.language}`,
+    `Target language label: ${locale.languageLabel}`,
     `Opening hours: ${lead.openingHours ?? "unknown"}`,
     `Description hints: ${enriched.inferredDescription ?? "none"}`,
     `Menu hints: ${enriched.inferredMenuItems.join(" | ") || "none"}`,
     `Image candidates: ${enriched.suggestedImages.join(" | ") || "none"}`,
     `Requirements:`,
     `- Keep all JSON schema fields valid.`,
+    `- Write ALL website copy in ${locale.languageLabel} (${locale.language}).`,
     `- Make copy persuasive and local to the city.`,
     `- Use menu hints when category is restaurant.`,
     `- Use images provided when relevant sections exist.`,
