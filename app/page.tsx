@@ -1,17 +1,6 @@
 import { SiteGenerationPlanner } from "@/components/demo-site/planner/site-generation-planner";
-import { listDemoSites } from "@/lib/demo-sites/repository";
 
 export default async function HomePage() {
-  const demoSites = await listDemoSites();
-  const references = demoSites.map((site) => ({
-    id: site.id,
-    templateType: site.templateType,
-    designStyle: site.designStyle,
-    editorUrl: `/dashboard/demos/${site.id}/editor`,
-    name: site.generatedContent.businessInfo.name,
-    city: site.generatedContent.businessInfo.city
-  }));
-
   return (
     <main className="min-h-screen bg-gradient-to-b from-zinc-100 via-sand to-zinc-50 px-4 py-8 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-7xl">
@@ -28,7 +17,7 @@ export default async function HomePage() {
           </div>
         </div>
 
-        <SiteGenerationPlanner referenceSites={references} />
+        <SiteGenerationPlanner />
       </div>
     </main>
   );

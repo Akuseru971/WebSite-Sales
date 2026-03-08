@@ -5,27 +5,6 @@ import Link from "next/link";
 import type { BusinessCategory, DemoSiteStyle } from "@/lib/demo-sites/types";
 import type { CommerceLead } from "@/lib/leads/types";
 
-interface ReferenceSite {
-  id: string;
-  templateType: BusinessCategory;
-  designStyle: DemoSiteStyle;
-  editorUrl: string;
-  name: string;
-  city: string;
-}
-
-interface SiteGenerationPlannerProps {
-  referenceSites: ReferenceSite[];
-}
-
-interface SiteOption {
-  id: string;
-  label: string;
-  templateType: BusinessCategory;
-  style: DemoSiteStyle;
-  description: string;
-}
-
 interface PlannedGeneration {
   id: string;
   lead: CommerceLead;
@@ -43,7 +22,6 @@ interface PlannedGeneration {
   generatedLanguage?: string;
   outreachEmailSubject?: string;
   outreachEmailBody?: string;
-  referenceEditorUrl?: string;
 }
 
 const categoryLabels: Record<BusinessCategory, string> = {
@@ -53,71 +31,11 @@ const categoryLabels: Record<BusinessCategory, string> = {
   real_estate: "Immobilier"
 };
 
-const siteOptionsByCategory: Record<BusinessCategory, SiteOption[]> = {
-  taxi: [
-    {
-      id: "taxi-urban-conversion",
-      label: "One-page Conversion Urbaine",
-      templateType: "taxi",
-      style: "urban",
-      description: "Hero impactant, CTA booking visible, preuve sociale immediate."
-    },
-    {
-      id: "taxi-corporate-executive",
-      label: "Executive Transfer Corporate",
-      templateType: "taxi",
-      style: "corporate",
-      description: "Positionnement premium pour clients business et aeroports."
-    }
-  ],
-  restaurant: [
-    {
-      id: "restaurant-atmospheric-story",
-      label: "Storytelling Gastronomique",
-      templateType: "restaurant",
-      style: "atmospheric",
-      description: "Mise en scene culinaire avec sections menu et reservation."
-    },
-    {
-      id: "restaurant-luxury-dining",
-      label: "Fine Dining Prestige",
-      templateType: "restaurant",
-      style: "luxury",
-      description: "Direction artistique haut de gamme et experience degustation."
-    }
-  ],
-  hotel: [
-    {
-      id: "hotel-luxury-stay",
-      label: "Sejour Luxe",
-      templateType: "hotel",
-      style: "luxury",
-      description: "Focus chambres, prestations et reservation sejour."
-    },
-    {
-      id: "hotel-modern-city",
-      label: "Hotel City Break Moderne",
-      templateType: "hotel",
-      style: "urban",
-      description: "Version orientee conversion mobile et reservation rapide."
-    }
-  ],
-  real_estate: [
-    {
-      id: "immo-corporate-leads",
-      label: "Agence Corporate Lead Gen",
-      templateType: "real_estate",
-      style: "corporate",
-      description: "Mandats et estimation, credibilite locale, formulaires lead."
-    },
-    {
-      id: "immo-premium-showcase",
-      label: "Vitrine Premium Proprietes",
-      templateType: "real_estate",
-      style: "luxury",
-      description: "Mise en avant de biens premium avec visuels immersifs."
-    }
-  ]
+const categoryDefaultStyle: Record<BusinessCategory, DemoSiteStyle> = {
+  taxi: "urban",
+  restaurant: "atmospheric",
+  hotel: "luxury",
+  real_estate: "corporate"
 };
 
 function normalize(value: string): string {
@@ -170,7 +88,7 @@ async function searchLeads(params: {
   return Array.isArray(payload.leads) ? (payload.leads as CommerceLead[]) : [];
 }
 
-export function SiteGenerationPlanner({ referenceSites }: SiteGenerationPlannerProps) {
+export function SiteGenerationPlanner() {
   const [cityQuery, setCityQuery] = useState("");
   const [activeCategories, setActiveCategories] = useState<Record<BusinessCategory, boolean>>(initialCategoryMap);
   const [fetchedLeads, setFetchedLeads] = useState<CommerceLead[]>([]);
@@ -178,7 +96,6 @@ export function SiteGenerationPlanner({ referenceSites }: SiteGenerationPlannerP
   const [searchError, setSearchError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
-  const [selectedSiteOptionIds, setSelectedSiteOptionIds] = useState<string[]>([]);
   const [plannedGenerations, setPlannedGenerations] = useState<PlannedGeneration[]>([]);
 
   const hasQueuedItems = plannedGenerations.some((item) => item.status === "queued" || item.status === "failed");
@@ -220,8 +137,6 @@ export function SiteGenerationPlanner({ referenceSites }: SiteGenerationPlannerP
 
   const selectedLeadWebsiteUrl = selectedLead ? getLeadWebsiteUrl(selectedLead.website) : null;
 
-  const availableSiteOptions = selectedLead ? siteOptionsByCategory[selectedLead.category] : [];
-
   function toggleCategory(category: BusinessCategory) {
     setActiveCategories((previous) => ({
       ...previous,
@@ -229,15 +144,8 @@ export function SiteGenerationPlanner({ referenceSites }: SiteGenerationPlannerP
     }));
   }
 
-  function toggleSiteOption(optionId: string) {
-    setSelectedSiteOptionIds((previous) =>
-      previous.includes(optionId) ? previous.filter((id) => id !== optionId) : [...previous, optionId]
-    );
-  }
-
   function chooseLead(leadId: string) {
     setSelectedLeadId(leadId);
-    setSelectedSiteOptionIds([]);
   }
 
   async function handleSearch() {
@@ -264,7 +172,6 @@ export function SiteGenerationPlanner({ referenceSites }: SiteGenerationPlannerP
       const leads = await searchLeads({ city: normalizedCity, categories });
       setFetchedLeads(leads);
       setSelectedLeadId(null);
-      setSelectedSiteOptionIds([]);
     } catch (error) {
       setFetchedLeads([]);
       setSearchError(error instanceof Error ? error.message : "Erreur de recherche.");
@@ -278,31 +185,20 @@ export function SiteGenerationPlanner({ referenceSites }: SiteGenerationPlannerP
       return;
     }
 
-    const selectedOptions = availableSiteOptions.filter((option) => selectedSiteOptionIds.includes(option.id));
-    if (!selectedOptions.length) {
-      return;
-    }
-
     const now = Date.now();
-    const plans: PlannedGeneration[] = selectedOptions.map((option, index) => {
-      const matchingReference =
-        referenceSites.find(
-          (site) => site.templateType === option.templateType && site.designStyle === option.style
-        ) ?? referenceSites.find((site) => site.templateType === option.templateType);
-
-      return {
-        id: `${selectedLead.id}-${option.id}-${now}-${index}`,
+    const plans: PlannedGeneration[] = [
+      {
+        id: `${selectedLead.id}-adaptive-${now}`,
         lead: selectedLead,
         leadName: selectedLead.businessName,
         city: selectedLead.city,
         category: selectedLead.category,
-        siteOptionLabel: option.label,
-        templateType: option.templateType,
-        style: option.style,
-        status: "queued",
-        referenceEditorUrl: matchingReference?.editorUrl
-      };
-    });
+        siteOptionLabel: "Adaptive Redesign",
+        templateType: selectedLead.category,
+        style: categoryDefaultStyle[selectedLead.category],
+        status: "queued"
+      }
+    ];
 
     setPlannedGenerations((previous) => [...plans, ...previous]);
   }
@@ -568,40 +464,16 @@ export function SiteGenerationPlanner({ referenceSites }: SiteGenerationPlannerP
               ) : null}
             </div>
 
-            <div className="mt-4 space-y-3">
-              {availableSiteOptions.map((option) => {
-                const checked = selectedSiteOptionIds.includes(option.id);
-                return (
-                  <label
-                    key={option.id}
-                    className={`block rounded-xl border p-3 transition ${
-                      checked ? "border-ink bg-zinc-100" : "border-zinc-200 bg-white"
-                    }`}
-                  >
-                    <span className="flex items-start gap-3">
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleSiteOption(option.id)}
-                        className="mt-1"
-                      />
-                      <span>
-                        <span className="block text-sm font-semibold text-zinc-900">{option.label}</span>
-                        <span className="mt-1 block text-xs text-zinc-600">{option.description}</span>
-                      </span>
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
+            <p className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-700">
+              Mode: <span className="font-semibold">Adaptive Redesign</span> (analyse du site existant, preservation identitaire, redesign premium)
+            </p>
 
             <button
               type="button"
               onClick={buildGenerationPlan}
-              disabled={!selectedSiteOptionIds.length}
-              className="mt-4 w-full rounded-full bg-ink px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+              className="mt-4 w-full rounded-full bg-ink px-4 py-2.5 text-sm font-semibold text-white"
             >
-              Ajouter a la file de generation
+              Ajouter le redesign adaptatif a la file
             </button>
           </>
         ) : (
@@ -685,14 +557,6 @@ export function SiteGenerationPlanner({ referenceSites }: SiteGenerationPlannerP
                         className="rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white"
                       >
                         Ouvrir editeur du site genere
-                      </Link>
-                    ) : null}
-                    {plan.referenceEditorUrl ? (
-                      <Link
-                        href={plan.referenceEditorUrl}
-                        className="rounded-full bg-ink px-3 py-1.5 text-xs font-semibold text-white"
-                      >
-                        Ouvrir editeur
                       </Link>
                     ) : null}
                   </div>
