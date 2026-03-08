@@ -56,6 +56,10 @@ function getSupabaseAdminOrNull() {
 
 function mapDbDemoSiteRow(row: Record<string, unknown>): DemoSiteRecord {
   const normalized = normalizeDemoSiteContent(row.generated_content_json);
+  const rawSiteUrl = row.preview_url ? String(row.preview_url) : "";
+  const normalizedSiteUrl = rawSiteUrl
+    ? rawSiteUrl.replace(/^\/preview\//, "/sites/")
+    : `/sites/${row.slug}`;
 
   return {
     id: String(row.id),
@@ -65,7 +69,7 @@ function mapDbDemoSiteRow(row: Record<string, unknown>): DemoSiteRecord {
     status: (row.status as DemoSiteRecord["status"]) ?? "generated",
     templateType: String(row.template_type) as DemoSiteRecord["templateType"],
     designStyle: String(row.design_style) as DemoSiteRecord["designStyle"],
-    previewUrl: row.preview_url ? String(row.preview_url) : `/preview/${row.slug}`,
+    previewUrl: normalizedSiteUrl,
     createdAt: String(row.created_at),
     updatedAt: String(row.updated_at),
     generatedContent: normalized,
@@ -244,7 +248,7 @@ export async function createGeneratedDemoSite(params: {
     status: "generated",
     template_type: params.templateType,
     design_style: params.designStyle,
-    preview_url: `/preview/${slug}`,
+    preview_url: `/sites/${slug}`,
     generated_content_json: validatedContent,
     extracted_site_profile_json: validatedContent.extractedSiteProfile ?? null,
     redesign_plan_json: validatedContent.redesignPlan ?? null,

@@ -38,6 +38,7 @@ interface PlannedGeneration {
   status: "queued" | "generating" | "generated" | "failed";
   errorMessage?: string;
   createdSiteId?: string;
+  createdSiteUrl?: string;
   createdSiteEditorUrl?: string;
   generatedLanguage?: string;
   outreachEmailSubject?: string;
@@ -342,6 +343,7 @@ export function SiteGenerationPlanner({ referenceSites }: SiteGenerationPlannerP
       }
 
       const siteId = payload.site?.id as string | undefined;
+      const siteUrl = payload.site?.previewUrl as string | undefined;
       const localeLanguage = payload.locale?.language as string | undefined;
       const outreachEmailSubject = payload.outreachEmail?.subject as string | undefined;
       const outreachEmailBody = payload.outreachEmail?.body as string | undefined;
@@ -353,6 +355,7 @@ export function SiteGenerationPlanner({ referenceSites }: SiteGenerationPlannerP
                 ...item,
                 status: "generated",
                 createdSiteId: siteId,
+                createdSiteUrl: siteUrl,
                 createdSiteEditorUrl: siteId ? `/dashboard/demos/${siteId}/editor` : undefined,
                 generatedLanguage: localeLanguage,
                 outreachEmailSubject,
@@ -666,6 +669,15 @@ export function SiteGenerationPlanner({ referenceSites }: SiteGenerationPlannerP
                       >
                         {plan.status === "generating" ? "Generation..." : "Generer ce site"}
                       </button>
+                    ) : null}
+                    {plan.createdSiteUrl ? (
+                      <Link
+                        href={plan.createdSiteUrl}
+                        target="_blank"
+                        className="rounded-full border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700"
+                      >
+                        Voir le site genere
+                      </Link>
                     ) : null}
                     {plan.createdSiteEditorUrl ? (
                       <Link
