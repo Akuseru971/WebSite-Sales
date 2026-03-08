@@ -7,6 +7,26 @@ import {
 } from "./versioning";
 import { createSupabaseAdminClient } from "@/lib/supabase/admin";
 
+function isMissingSchemaColumnError(error: unknown): boolean {
+  if (!error || typeof error !== "object") {
+    return false;
+  }
+
+  const message = "message" in error ? String(error.message ?? "") : "";
+  return /Could not find the '.*' column of 'demo_sites' in the schema cache/i.test(message);
+}
+
+function toLegacyDemoSitePayload(payload: Record<string, unknown>): Record<string, unknown> {
+  const legacy = { ...payload };
+  delete legacy.extracted_site_profile_json;
+  delete legacy.redesign_plan_json;
+  delete legacy.adaptive_site_json;
+  delete legacy.source_screenshots_json;
+  delete legacy.source_structure_json;
+  delete legacy.source_brand_signals_json;
+  return legacy;
+}
+
 function slugify(value: string): string {
   return value
     .toLowerCase()
@@ -143,22 +163,36 @@ export async function saveDemoSiteContent(input: SaveDemoSiteContentInput): Prom
   const supabase = createSupabaseAdminClient();
   const validatedContent = validateDemoSiteContent(input.content);
 
-  const { data: updated, error } = await supabase
+  const payload: Record<string, unknown> = {
+    title: validatedContent.businessInfo.name,
+    generated_content_json: validatedContent,
+    extracted_site_profile_json: validatedContent.extractedSiteProfile ?? null,
+    redesign_plan_json: validatedContent.redesignPlan ?? null,
+    adaptive_site_json: validatedContent.adaptiveSiteJson ?? null,
+    source_screenshots_json: validatedContent.extractedSiteProfile?.sourceScreenshots ?? null,
+    source_structure_json: validatedContent.extractedSiteProfile?.structuralIdentity.structureSummary ?? null,
+    source_brand_signals_json: validatedContent.extractedSiteProfile?.businessIdentity ?? null,
+    updated_at: new Date().toISOString()
+  };
+
+  let { data: updated, error } = await supabase
     .from("demo_sites")
-    .update({
-      title: validatedContent.businessInfo.name,
-      generated_content_json: validatedContent,
-      extracted_site_profile_json: validatedContent.extractedSiteProfile ?? null,
-      redesign_plan_json: validatedContent.redesignPlan ?? null,
-      adaptive_site_json: validatedContent.adaptiveSiteJson ?? null,
-      source_screenshots_json: validatedContent.extractedSiteProfile?.sourceScreenshots ?? null,
-      source_structure_json: validatedContent.extractedSiteProfile?.structuralIdentity.structureSummary ?? null,
-      source_brand_signals_json: validatedContent.extractedSiteProfile?.businessIdentity ?? null,
-      updated_at: new Date().toISOString()
-    })
+    .update(payload)
     .eq("id", input.demoSiteId)
     .select("*")
     .single();
+
+  if (error && isMissingSchemaColumnError(error)) {
+    const retry = await supabase
+      .from("demo_sites")
+      .update(toLegacyDemoSitePayload(payload))
+      .eq("id", input.demoSiteId)
+      .select("*")
+      .single();
+
+    updated = retry.data;
+    error = retry.error;
+  }
 
   if (error) {
     throw new Error(`Failed to update demo site content: ${error.message}`);
@@ -204,27 +238,40 @@ export async function createGeneratedDemoSite(params: {
     city: validatedContent.businessInfo.city
   });
 
-  const { data, error } = await supabase
+  const payload: Record<string, unknown> = {
+    slug,
+    title: validatedContent.businessInfo.name,
+    status: "generated",
+    template_type: params.templateType,
+    design_style: params.designStyle,
+    preview_url: `/preview/${slug}`,
+    generated_content_json: validatedContent,
+    extracted_site_profile_json: validatedContent.extractedSiteProfile ?? null,
+    redesign_plan_json: validatedContent.redesignPlan ?? null,
+    adaptive_site_json: validatedContent.adaptiveSiteJson ?? null,
+    source_screenshots_json: validatedContent.extractedSiteProfile?.sourceScreenshots ?? null,
+    source_structure_json: validatedContent.extractedSiteProfile?.structuralIdentity.structureSummary ?? null,
+    source_brand_signals_json: validatedContent.extractedSiteProfile?.businessIdentity ?? null,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+
+  let { data, error } = await supabase
     .from("demo_sites")
-    .insert({
-      slug,
-      title: validatedContent.businessInfo.name,
-      status: "generated",
-      template_type: params.templateType,
-      design_style: params.designStyle,
-      preview_url: `/preview/${slug}`,
-      generated_content_json: validatedContent,
-      extracted_site_profile_json: validatedContent.extractedSiteProfile ?? null,
-      redesign_plan_json: validatedContent.redesignPlan ?? null,
-      adaptive_site_json: validatedContent.adaptiveSiteJson ?? null,
-      source_screenshots_json: validatedContent.extractedSiteProfile?.sourceScreenshots ?? null,
-      source_structure_json: validatedContent.extractedSiteProfile?.structuralIdentity.structureSummary ?? null,
-      source_brand_signals_json: validatedContent.extractedSiteProfile?.businessIdentity ?? null,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString()
-    })
+    .insert(payload)
     .select("*")
     .single();
+
+  if (error && isMissingSchemaColumnError(error)) {
+    const retry = await supabase
+      .from("demo_sites")
+      .insert(toLegacyDemoSitePayload(payload))
+      .select("*")
+      .single();
+
+    data = retry.data;
+    error = retry.error;
+  }
 
   if (error || !data) {
     throw new Error(`Failed to create generated demo site: ${error?.message ?? "unknown error"}`);
