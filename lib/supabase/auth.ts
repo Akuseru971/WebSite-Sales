@@ -10,3 +10,18 @@ export async function requireAuthenticatedUserId(): Promise<string> {
 
   return data.user.id;
 }
+
+export async function getAuthenticatedUserIdOrNull(): Promise<string | null> {
+  try {
+    const supabase = await createSupabaseServerClient();
+    const { data, error } = await supabase.auth.getUser();
+
+    if (error || !data.user) {
+      return null;
+    }
+
+    return data.user.id;
+  } catch {
+    return null;
+  }
+}

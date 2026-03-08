@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { BusinessCategory, DemoSiteStyle } from "@/lib/demo-sites/types";
 import type { CommerceLead } from "@/lib/leads/types";
-import { requireAuthenticatedUserId } from "@/lib/supabase/auth";
+import { getAuthenticatedUserIdOrNull } from "@/lib/supabase/auth";
 import { enrichCommerceLead } from "@/lib/leads/enrichment";
 import { generateDemoSiteContentWithAI } from "@/lib/demo-sites/ai-generate";
 import { createGeneratedDemoSite } from "@/lib/demo-sites/repository";
@@ -35,7 +35,7 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
-    const actorUserId = await requireAuthenticatedUserId();
+    const actorUserId = await getAuthenticatedUserIdOrNull();
     const body = (await request.json()) as GenerationRequestBody;
 
     if (!body?.lead || !body?.siteOption) {
@@ -62,7 +62,7 @@ export async function POST(request: Request) {
       content,
       templateType: body.siteOption.templateType,
       designStyle: body.siteOption.style,
-      actorUserId,
+      actorUserId: actorUserId ?? undefined,
       activityType: "demo_site_generated_from_live_lead",
       changeNote: `Generated from lead ${body.lead.businessName} (${body.siteOption.label})`
     });
