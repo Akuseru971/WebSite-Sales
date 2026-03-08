@@ -1,12 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import type { DemoSection, DemoSiteContent, DemoSiteRecord, DemoSiteVersion } from "@/lib/demo-sites/types";
 import { getHeroSection } from "@/lib/demo-sites/content";
 import { validateDemoSiteContent, getValidationErrorMessage } from "@/lib/demo-sites/validation";
 
-type EditorTab = "preview" | "visual" | "json" | "ai" | "versions";
+type EditorTab = "visual" | "json" | "ai" | "versions";
 
 interface DemoSiteEditorProps {
   site: DemoSiteRecord;
@@ -38,7 +37,7 @@ function contentEquals(a: DemoSiteContent, b: DemoSiteContent): boolean {
 }
 
 export function DemoSiteEditor({ site, initialVersions }: DemoSiteEditorProps) {
-  const [activeTab, setActiveTab] = useState<EditorTab>("preview");
+  const [activeTab, setActiveTab] = useState<EditorTab>("visual");
   const [currentContent, setCurrentContent] = useState<DemoSiteContent>(site.generatedContent);
   const [draftContent, setDraftContent] = useState<DemoSiteContent>(deepClone(site.generatedContent));
   const [jsonDraft, setJsonDraft] = useState<string>(JSON.stringify(site.generatedContent, null, 2));
@@ -354,11 +353,7 @@ export function DemoSiteEditor({ site, initialVersions }: DemoSiteEditorProps) {
             <h1 className="font-[var(--font-heading)] text-4xl leading-tight text-ink">{draftContent.businessInfo.name}</h1>
             <p className="text-sm text-zinc-600">Single source of truth: `generated_content_json`</p>
           </div>
-          <div className="flex items-center gap-2">
-            <Link href={site.previewUrl} target="_blank" className="rounded-full border border-zinc-300 bg-white px-4 py-2 text-sm font-semibold text-zinc-800">
-              Open Standalone Preview
-            </Link>
-          </div>
+          <div className="flex items-center gap-2" />
         </div>
 
         {statusMessage ? <p className="mb-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm text-emerald-700">{statusMessage}</p> : null}
@@ -366,7 +361,6 @@ export function DemoSiteEditor({ site, initialVersions }: DemoSiteEditorProps) {
 
         <div className="mb-6 flex flex-wrap gap-2 rounded-2xl border border-zinc-200 bg-white p-2 shadow-soft">
           {([
-            ["preview", "Preview"],
             ["visual", "Visual Edit"],
             ["json", "JSON Edit"],
             ["ai", "AI Edit"],
@@ -384,12 +378,6 @@ export function DemoSiteEditor({ site, initialVersions }: DemoSiteEditorProps) {
             </button>
           ))}
         </div>
-
-        {activeTab === "preview" ? (
-          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-soft">
-            <iframe title="Demo Site Preview" src={site.previewUrl} className="h-[70vh] w-full rounded-xl border border-zinc-200 bg-white" />
-          </section>
-        ) : null}
 
         {activeTab === "visual" ? (
           <section className="space-y-6">

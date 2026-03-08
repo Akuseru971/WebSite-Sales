@@ -11,6 +11,18 @@ import {
   generateAdaptiveDemoSiteJson,
 } from "@/lib/demo-sites/redesign-intelligence";
 
+interface SourcePreservationBundle {
+  mustKeepHeadings: string[];
+  mustKeepServices: string[];
+  mustKeepMenuItems: string[];
+  mustKeepImages: string[];
+  mustKeepContact: {
+    phones: string[];
+    emails: string[];
+    addresses: string[];
+  };
+}
+
 function deepClone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
@@ -261,6 +273,155 @@ function createAdaptiveBaseContent(params: {
   });
 }
 
+function buildSourcePreservationBundle(enriched: EnrichedCommerceLead): SourcePreservationBundle {
+  const extracted = enriched.extractedWebsite;
+
+  return {
+    mustKeepHeadings: (extracted?.keyHeadings ?? []).slice(0, 16),
+    mustKeepServices: (extracted?.serviceDescriptions ?? []).slice(0, 16),
+    mustKeepMenuItems: enriched.inferredMenuItems.slice(0, 20),
+    mustKeepImages: enriched.suggestedImages.slice(0, 18),
+    mustKeepContact: {
+      phones: (extracted?.contact.phones ?? []).slice(0, 6),
+      emails: (extracted?.contact.emails ?? []).slice(0, 6),
+      addresses: (extracted?.contact.addresses ?? []).slice(0, 4),
+    },
+  };
+}
+
+function summarizeText(text: string, maxChars: number): { compact: string; overflow?: string } {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  if (normalized.length <= maxChars) {
+    return { compact: normalized };
+  }
+
+  const slices = normalized.match(/[^.!?]+[.!?]?/g) ?? [normalized];
+  let compact = "";
+  let index = 0;
+
+  while (index < slices.length && (compact + slices[index]).trim().length <= maxChars) {
+    compact = `${compact} ${slices[index]}`.trim();
+    index += 1;
+  }
+
+  if (!compact) {
+    compact = `${normalized.slice(0, maxChars - 3).trimEnd()}...`;
+  }
+
+  const overflow = slices.slice(index).join(" ").trim();
+  return {
+    compact,
+    overflow: overflow || undefined,
+  };
+}
+
+function compressHomepageDensity(content: DemoSiteContent): DemoSiteContent {
+  const next = deepClone(content);
+  const overflowFaqs: Array<{ question: string; answer: string }> = [];
+
+  next.sections = next.sections.map((section) => {
+    if (section.type === "about") {
+      const summarized = summarizeText(section.content.body, 420);
+      if (summarized.overflow) {
+        overflowFaqs.push({ question: "More about our story", answer: summarized.overflow });
+      }
+      return {
+        ...section,
+        content: {
+          ...section.content,
+          body: summarized.compact,
+        },
+      };
+    }
+
+    if (section.type === "services") {
+      return {
+        ...section,
+        content: {
+          ...section.content,
+          items: section.content.items.slice(0, 6).map((item) => {
+            const summarized = summarizeText(item.description, 220);
+            if (summarized.overflow) {
+              overflowFaqs.push({ question: `More details about ${item.title}`, answer: summarized.overflow });
+            }
+            return {
+              ...item,
+              description: summarized.compact,
+            };
+          }),
+        },
+      };
+    }
+
+    if (section.type === "menu_highlights") {
+      return {
+        ...section,
+        content: {
+          ...section.content,
+          items: section.content.items.slice(0, 8).map((item) => {
+            const summarized = summarizeText(item.description, 170);
+            if (summarized.overflow) {
+              overflowFaqs.push({ question: `Details for ${item.name}`, answer: summarized.overflow });
+            }
+            return {
+              ...item,
+              description: summarized.compact,
+            };
+          }),
+        },
+      };
+    }
+
+    if (section.type === "cta") {
+      const summarized = summarizeText(section.content.body, 220);
+      if (summarized.overflow) {
+        overflowFaqs.push({ question: "Additional booking information", answer: summarized.overflow });
+      }
+      return {
+        ...section,
+        content: {
+          ...section.content,
+          body: summarized.compact,
+        },
+      };
+    }
+
+    return section;
+  });
+
+  if (overflowFaqs.length > 0) {
+    const faqIndex = next.sections.findIndex((section) => section.type === "faq");
+    if (faqIndex >= 0) {
+      const faqSection = next.sections[faqIndex];
+      if (faqSection.type === "faq") {
+        next.sections[faqIndex] = {
+          ...faqSection,
+          content: {
+            ...faqSection.content,
+            items: [...faqSection.content.items, ...overflowFaqs].slice(0, 10),
+          },
+        };
+      }
+    } else {
+      next.sections.push(
+        createSection("faq", next.sections.length, {
+          title: "More information",
+          items: overflowFaqs.slice(0, 8),
+        }),
+      );
+    }
+  }
+
+  next.sections = next.sections
+    .sort((a, b) => a.order - b.order)
+    .map((section, index) => ({
+      ...section,
+      order: index,
+    }));
+
+  return validateDemoSiteContent(next);
+}
+
 function findSection<TType extends DemoSection["type"]>(
   content: DemoSiteContent,
   type: TType
@@ -458,6 +619,7 @@ function buildPrompt(params: {
   enriched: EnrichedCommerceLead;
   siteProfileSummary: string;
   redesignPlanSummary: string;
+  sourcePreservationSummary: string;
 }): string {
   const { category, style, siteLabel, enriched } = params;
   const lead = enriched.lead;
@@ -487,11 +649,15 @@ function buildPrompt(params: {
     params.siteProfileSummary,
     `Redesign plan (agency strategy layer):`,
     params.redesignPlanSummary,
+    `Source preservation bundle (keep this material as priority):`,
+    params.sourcePreservationSummary,
     `Requirements:`,
     `- Keep all JSON schema fields valid.`,
     `- Write ALL website copy in ${locale.languageLabel} (${locale.language}).`,
     `- Preserve business recognizability and authentic identity cues.`,
     `- Preserve strong source phrasing and media when quality is good.`,
+    `- Preserve as much original text, image usage, and menu descriptions as possible.`,
+    `- If content is too long for homepage, summarize it and move detailed remainder into deeper sections (FAQ/details), not delete it.`,
     `- Fill missing details only when necessary and keep them generic.`,
     `- Make copy persuasive and local to the city.`,
     `- Use structured extraction text first before any fallback text.`,
@@ -524,6 +690,7 @@ export async function generateDemoSiteContentWithAI(params: {
 
   const extractedSiteProfile = analyzeSourceWebsiteIdentity(params.enriched);
   const redesignPlan = await createRedesignPlan(extractedSiteProfile);
+  const sourcePreservationBundle = buildSourcePreservationBundle(params.enriched);
   const adaptiveSiteJson = generateAdaptiveDemoSiteJson(redesignPlan, baseContent);
 
   baseContent = {
@@ -536,9 +703,11 @@ export async function generateDemoSiteContentWithAI(params: {
       plan: redesignPlan,
     }),
   };
+  baseContent = compressHomepageDensity(baseContent);
 
   const siteProfileSummary = JSON.stringify(extractedSiteProfile, null, 2);
   const redesignPlanSummary = JSON.stringify(redesignPlan, null, 2);
+  const sourcePreservationSummary = JSON.stringify(sourcePreservationBundle, null, 2);
 
   try {
     const result = await updateDemoSiteJsonWithAI({
@@ -547,15 +716,16 @@ export async function generateDemoSiteContentWithAI(params: {
         ...params,
         siteProfileSummary,
         redesignPlanSummary,
+        sourcePreservationSummary,
       })
     });
 
-    return validateDemoSiteContent({
+    return compressHomepageDensity(validateDemoSiteContent({
       ...result.suggestedContent,
       extractedSiteProfile,
       redesignPlan,
       adaptiveSiteJson,
-    });
+    }));
   } catch {
     // Fallback to deterministic remodeling if AI response fails.
     return baseContent;

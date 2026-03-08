@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { SiteGenerationPlanner } from "@/components/demo-site/planner/site-generation-planner";
 import { listDemoSites } from "@/lib/demo-sites/repository";
 
@@ -8,7 +7,6 @@ export default async function HomePage() {
     id: site.id,
     templateType: site.templateType,
     designStyle: site.designStyle,
-    previewUrl: site.previewUrl,
     editorUrl: `/dashboard/demos/${site.id}/editor`,
     name: site.generatedContent.businessInfo.name,
     city: site.generatedContent.businessInfo.city
@@ -28,12 +26,6 @@ export default async function HomePage() {
               choisir les variantes de sites a generer pour chaque commerce.
             </p>
           </div>
-          <Link
-            href="/preview"
-            className="inline-flex items-center rounded-full border border-zinc-300 bg-white px-5 py-2.5 text-sm font-semibold text-zinc-800 transition hover:-translate-y-0.5 hover:border-zinc-400"
-          >
-            Ouvrir la librairie de previews
-          </Link>
         </div>
 
         <SiteGenerationPlanner referenceSites={references} />

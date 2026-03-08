@@ -9,7 +9,6 @@ interface ReferenceSite {
   id: string;
   templateType: BusinessCategory;
   designStyle: DemoSiteStyle;
-  previewUrl: string;
   editorUrl: string;
   name: string;
   city: string;
@@ -39,12 +38,10 @@ interface PlannedGeneration {
   status: "queued" | "generating" | "generated" | "failed";
   errorMessage?: string;
   createdSiteId?: string;
-  createdSitePreviewUrl?: string;
   createdSiteEditorUrl?: string;
   generatedLanguage?: string;
   outreachEmailSubject?: string;
   outreachEmailBody?: string;
-  referencePreviewUrl?: string;
   referenceEditorUrl?: string;
 }
 
@@ -302,7 +299,6 @@ export function SiteGenerationPlanner({ referenceSites }: SiteGenerationPlannerP
         templateType: option.templateType,
         style: option.style,
         status: "queued",
-        referencePreviewUrl: matchingReference?.previewUrl,
         referenceEditorUrl: matchingReference?.editorUrl
       };
     });
@@ -346,7 +342,6 @@ export function SiteGenerationPlanner({ referenceSites }: SiteGenerationPlannerP
       }
 
       const siteId = payload.site?.id as string | undefined;
-      const previewUrl = payload.site?.previewUrl as string | undefined;
       const localeLanguage = payload.locale?.language as string | undefined;
       const outreachEmailSubject = payload.outreachEmail?.subject as string | undefined;
       const outreachEmailBody = payload.outreachEmail?.body as string | undefined;
@@ -358,7 +353,6 @@ export function SiteGenerationPlanner({ referenceSites }: SiteGenerationPlannerP
                 ...item,
                 status: "generated",
                 createdSiteId: siteId,
-                createdSitePreviewUrl: previewUrl,
                 createdSiteEditorUrl: siteId ? `/dashboard/demos/${siteId}/editor` : undefined,
                 generatedLanguage: localeLanguage,
                 outreachEmailSubject,
@@ -673,30 +667,12 @@ export function SiteGenerationPlanner({ referenceSites }: SiteGenerationPlannerP
                         {plan.status === "generating" ? "Generation..." : "Generer ce site"}
                       </button>
                     ) : null}
-                    {plan.createdSitePreviewUrl ? (
-                      <Link
-                        href={plan.createdSitePreviewUrl}
-                        target="_blank"
-                        className="rounded-full border border-emerald-300 bg-white px-3 py-1.5 text-xs font-semibold text-emerald-700"
-                      >
-                        Ouvrir site genere
-                      </Link>
-                    ) : null}
                     {plan.createdSiteEditorUrl ? (
                       <Link
                         href={plan.createdSiteEditorUrl}
                         className="rounded-full bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white"
                       >
                         Ouvrir editeur du site genere
-                      </Link>
-                    ) : null}
-                    {plan.referencePreviewUrl ? (
-                      <Link
-                        href={plan.referencePreviewUrl}
-                        target="_blank"
-                        className="rounded-full border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700"
-                      >
-                        Voir preview de reference
                       </Link>
                     ) : null}
                     {plan.referenceEditorUrl ? (
