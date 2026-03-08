@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #f7f3ee;
+  --foreground: #111015;
+}
+
+body {
+  background:
+    radial-gradient(circle at 8% -6%, rgba(168, 111, 63, 0.16), transparent 28%),
+    radial-gradient(circle at 92% 0%, rgba(30, 59, 53, 0.14), transparent 32%),
+    var(--background);
+  color: var(--foreground);
+}
+
+@layer base {
+  * {
+    @apply border-transparent;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    @apply tracking-tight;
+  }
+}
+
+@layer utilities {
+  .section-shell {
+    @apply py-20 md:py-28;
+  }
+
+  .premium-glass {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.82), rgba(255, 255, 255, 0.68));
+    backdrop-filter: blur(6px);
+  }
+
+  .section-divider {
+    @apply mx-auto my-2 h-px w-full max-w-6xl bg-gradient-to-r from-transparent via-zinc-300/80 to-transparent;
+  }
+
+  .card-premium {
+    @apply rounded-3xl border border-zinc-200/80 bg-white/90 shadow-soft transition duration-300 hover:-translate-y-1 hover:shadow-premium;
+  }
+
+  .grain-overlay {
+    background-image: radial-gradient(rgba(17, 16, 21, 0.06) 0.5px, transparent 0.5px);
+    background-size: 3px 3px;
+  }
+}

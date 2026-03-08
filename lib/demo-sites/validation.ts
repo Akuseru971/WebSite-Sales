@@ -1,0 +1,388 @@
+import { z } from "zod";
+import type { DemoSiteContent, DemoSection, DemoSiteStyle } from "./types";
+
+const categorySchema = z.enum(["taxi", "restaurant", "hotel", "real_estate"]);
+const sectionTypeSchema = z.enum([
+  "hero",
+  "about",
+  "services",
+  "rooms",
+  "amenities",
+  "menu_highlights",
+  "room_highlights",
+  "featured_properties",
+  "gallery",
+  "stats",
+  "coverage",
+  "service_coverage",
+  "testimonials",
+  "faq",
+  "cta",
+  "contact"
+]);
+
+const heroContentSchema = z.object({
+  badge: z.string().optional(),
+  title: z.string().min(1),
+  subtitle: z.string().min(1),
+  primaryCta: z.object({ label: z.string().min(1), href: z.string().min(1) }),
+  secondaryCta: z.object({ label: z.string().min(1), href: z.string().min(1) }).optional(),
+  image: z.string().url().optional()
+});
+
+const servicesContentSchema = z.object({
+  title: z.string().min(1),
+  subtitle: z.string().optional(),
+  items: z
+    .array(
+      z.object({
+        title: z.string().min(1),
+        description: z.string().min(1),
+        icon: z.string().optional()
+      })
+    )
+    .min(1)
+});
+
+const aboutContentSchema = z.object({
+  title: z.string().min(1),
+  body: z.string().min(1),
+  bullets: z.array(z.string()).optional()
+});
+
+const menuHighlightsContentSchema = z.object({
+  title: z.string().min(1),
+  items: z
+    .array(
+      z.object({
+        name: z.string().min(1),
+        description: z.string().min(1),
+        priceHint: z.string().optional(),
+        image: z.string().url().optional()
+      })
+    )
+    .min(1)
+});
+
+const roomHighlightsContentSchema = z.object({
+  title: z.string().min(1),
+  items: z
+    .array(
+      z.object({
+        name: z.string().min(1),
+        description: z.string().min(1),
+        capacityHint: z.string().optional(),
+        image: z.string().url().optional()
+      })
+    )
+    .min(1)
+});
+
+const featuredPropertiesContentSchema = z.object({
+  title: z.string().min(1),
+  subtitle: z.string().optional(),
+  items: z
+    .array(
+      z.object({
+        title: z.string().min(1),
+        location: z.string().min(1),
+        priceHint: z.string().min(1),
+        type: z.string().min(1),
+        image: z.string().url().optional()
+      })
+    )
+    .min(1)
+});
+
+const galleryContentSchema = z.object({
+  title: z.string().min(1),
+  items: z.array(z.object({ image: z.string().url(), alt: z.string().min(1) })).min(1)
+});
+
+const statsContentSchema = z.object({
+  title: z.string().optional(),
+  items: z.array(z.object({ label: z.string().min(1), value: z.string().min(1) })).min(1)
+});
+
+const coverageContentSchema = z.object({
+  title: z.string().min(1),
+  areas: z.array(z.string().min(1)).min(1),
+  note: z.string().optional()
+});
+
+const testimonialsContentSchema = z.object({
+  title: z.string().min(1),
+  items: z
+    .array(
+      z.object({
+        quote: z.string().min(1),
+        author: z.string().min(1),
+        role: z.string().optional()
+      })
+    )
+    .min(1)
+});
+
+const faqContentSchema = z.object({
+  title: z.string().min(1),
+  items: z.array(z.object({ question: z.string().min(1), answer: z.string().min(1) })).min(1)
+});
+
+const ctaContentSchema = z.object({
+  title: z.string().min(1),
+  body: z.string().min(1),
+  action: z.object({ label: z.string().min(1), href: z.string().min(1) })
+});
+
+const contactContentSchema = z.object({
+  title: z.string().min(1),
+  address: z.string().optional(),
+  phone: z.string().optional(),
+  email: z.string().optional(),
+  hours: z.array(z.string()).optional(),
+  mapsUrl: z.string().url().optional()
+});
+
+const demoSectionSchema: z.ZodType<DemoSection> = z.object({
+  id: z.string().min(1),
+  type: sectionTypeSchema,
+  enabled: z.boolean().default(true),
+  order: z.number().int().min(0),
+  styleVariant: z.string().optional(),
+  content: z.unknown()
+}) as z.ZodType<DemoSection>;
+
+export const demoSiteContentSchema: z.ZodType<DemoSiteContent> = z.object({
+  businessInfo: z.object({
+    name: z.string().min(1),
+    category: categorySchema,
+    city: z.string().min(1),
+    country: z.string().min(1),
+    address: z.string().optional(),
+    phone: z.string().optional(),
+    email: z.string().email().optional(),
+    whatsapp: z.string().optional(),
+    tagline: z.string().optional(),
+    shortDescription: z.string().optional()
+  }),
+  theme: z.object({
+    primaryColor: z.string().min(1),
+    secondaryColor: z.string().min(1),
+    accentColor: z.string().min(1),
+    backgroundStyle: z.string().min(1),
+    headingFont: z.string().min(1),
+    bodyFont: z.string().min(1),
+    buttonVariant: z.enum(["solid", "outline", "ghost"]),
+    borderRadius: z.enum(["rounded", "soft", "sharp"]),
+    tone: z.enum(["premium", "warm", "corporate", "luxury", "modern"])
+  }),
+  seo: z.object({
+    metaTitle: z.string().min(1),
+    metaDescription: z.string().min(1),
+    ogTitle: z.string().optional(),
+    ogDescription: z.string().optional()
+  }),
+  contact: z.object({
+    contactName: z.string().optional(),
+    email: z.string().email().optional(),
+    phone: z.string().optional(),
+    whatsapp: z.string().optional(),
+    bookingEnabled: z.boolean(),
+    formEnabled: z.boolean(),
+    openingHours: z.array(z.string()).optional(),
+    mapEmbedUrl: z.string().optional()
+  }),
+  sections: z.array(demoSectionSchema).min(1)
+}) as z.ZodType<DemoSiteContent>;
+
+function isLegacyContent(input: unknown): input is { siteTitle?: string; category?: string; hero?: unknown; sections?: unknown[] } {
+  if (!input || typeof input !== "object") {
+    return false;
+  }
+
+  const candidate = input as Record<string, unknown>;
+  return typeof candidate.siteTitle === "string" || Array.isArray(candidate.sections);
+}
+
+function getDefaultStyleForCategory(category: DemoSiteContent["businessInfo"]["category"]): DemoSiteStyle {
+  switch (category) {
+    case "taxi":
+      return "urban";
+    case "restaurant":
+      return "atmospheric";
+    case "hotel":
+      return "luxury";
+    case "real_estate":
+      return "corporate";
+  }
+}
+
+function validateSectionContent(section: DemoSection): DemoSection {
+  switch (section.type) {
+    case "hero":
+      heroContentSchema.parse(section.content);
+      return section;
+    case "about":
+      aboutContentSchema.parse(section.content);
+      return section;
+    case "services":
+    case "amenities":
+      servicesContentSchema.parse(section.content);
+      return section;
+    case "menu_highlights":
+      menuHighlightsContentSchema.parse(section.content);
+      return section;
+    case "room_highlights":
+    case "rooms":
+      roomHighlightsContentSchema.parse(section.content);
+      return section;
+    case "featured_properties":
+      featuredPropertiesContentSchema.parse(section.content);
+      return section;
+    case "gallery":
+      galleryContentSchema.parse(section.content);
+      return section;
+    case "stats":
+      statsContentSchema.parse(section.content);
+      return section;
+    case "coverage":
+    case "service_coverage":
+      coverageContentSchema.parse(section.content);
+      return section;
+    case "testimonials":
+      testimonialsContentSchema.parse(section.content);
+      return section;
+    case "faq":
+      faqContentSchema.parse(section.content);
+      return section;
+    case "cta":
+      ctaContentSchema.parse(section.content);
+      return section;
+    case "contact":
+      contactContentSchema.parse(section.content);
+      return section;
+    default:
+      return section;
+  }
+}
+
+export function normalizeDemoSiteContent(input: unknown): DemoSiteContent {
+  const parsed = demoSiteContentSchema.safeParse(input);
+
+  if (parsed.success) {
+    return {
+      ...parsed.data,
+      sections: parsed.data.sections
+        .map((section) => validateSectionContent(section))
+        .sort((a, b) => a.order - b.order)
+    };
+  }
+
+  if (!isLegacyContent(input)) {
+    throw new Error("Invalid demo site content JSON structure.");
+  }
+
+  const legacy = input as Record<string, unknown>;
+  const category = categorySchema.parse(legacy.category ?? "restaurant");
+  const heroRaw = heroContentSchema.parse(legacy.hero ?? {
+    title: legacy.siteTitle ?? "Premium Business Experience",
+    subtitle: legacy.siteSubtitle ?? "Professional website concept generated for outreach",
+    primaryCta: { label: "Contact us", href: "#contact" }
+  });
+  const legacySections = Array.isArray(legacy.sections) ? legacy.sections : [];
+
+  const sections: DemoSection[] = [
+    {
+      id: "hero",
+      type: "hero",
+      enabled: true,
+      order: 0,
+      styleVariant: "default",
+      content: heroRaw
+    }
+  ];
+
+  legacySections.forEach((item, index) => {
+    if (!item || typeof item !== "object") {
+      return;
+    }
+
+    const raw = item as Record<string, unknown>;
+    const rawType = (raw.type as string | undefined) ?? "about";
+    const mappedType = rawType === "coverage" ? "service_coverage" : rawType;
+
+    if (!sectionTypeSchema.safeParse(mappedType).success) {
+      return;
+    }
+
+    const mappedSection = validateSectionContent({
+      id: (raw.id as string | undefined) ?? `${mappedType}-${index + 1}`,
+      type: mappedType as DemoSection["type"],
+      enabled: true,
+      order: index + 1,
+      styleVariant: "default",
+      content: (raw.content ?? {}) as DemoSection["content"]
+    } as DemoSection);
+
+    sections.push(mappedSection);
+  });
+
+  const normalized: DemoSiteContent = {
+    businessInfo: {
+      name: String(legacy.siteTitle ?? "Generated Demo Site"),
+      category,
+      city: String(legacy.city ?? "Unknown city"),
+      country: String(legacy.country ?? "Unknown country"),
+      tagline: String(legacy.siteSubtitle ?? "Premium demo website concept"),
+      shortDescription: heroRaw.subtitle
+    },
+    theme: {
+      primaryColor: "#111015",
+      secondaryColor: "#f7f3ee",
+      accentColor: "#a86f3f",
+      backgroundStyle: getDefaultStyleForCategory(category),
+      headingFont: "Cormorant Garamond",
+      bodyFont: "Manrope",
+      buttonVariant: "solid",
+      borderRadius: "soft",
+      tone: "premium"
+    },
+    seo: {
+      metaTitle: `${legacy.siteTitle ?? "Generated Demo Site"} | Demo Preview`,
+      metaDescription: String(legacy.siteSubtitle ?? "Generated website concept")
+    },
+    contact: {
+      contactName: String(legacy.siteTitle ?? "Team"),
+      bookingEnabled: false,
+      formEnabled: true
+    },
+    sections: sections
+      .map((section) => validateSectionContent(section))
+      .sort((a, b) => a.order - b.order)
+  };
+
+  return normalized;
+}
+
+export function validateDemoSiteContent(input: unknown): DemoSiteContent {
+  const normalized = normalizeDemoSiteContent(input);
+  demoSiteContentSchema.parse(normalized);
+  return normalized;
+}
+
+export function getValidationErrorMessage(error: unknown): string {
+  if (error instanceof z.ZodError) {
+    return error.issues
+      .map((issue) => {
+        const path = issue.path.join(".");
+        return path ? `${path}: ${issue.message}` : issue.message;
+      })
+      .join("\n");
+  }
+
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  return "Unknown validation error.";
+}
