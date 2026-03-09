@@ -9,6 +9,7 @@ interface TemplateShellProps {
 
 export function TemplateShell({ site, className, children }: TemplateShellProps) {
   const adaptive = site.generatedContent.adaptiveSiteJson;
+  const navItems = site.generatedContent.sourceStructureJson?.pages[0]?.navItems?.slice(0, 5) ?? [];
   const isSolidNav = adaptive?.navStyle === "solid";
   const navStyleClass =
     isSolidNav
@@ -41,12 +42,15 @@ export function TemplateShell({ site, className, children }: TemplateShellProps)
       <div className="relative z-10">
         <header className={cn("mx-auto mt-4 flex w-full max-w-6xl items-center justify-between rounded-2xl px-4 py-3 shadow-soft sm:px-6 lg:px-8", navStyleClass)}>
           <div className="min-w-0">
-            <p className={cn("text-[11px] font-semibold uppercase tracking-[0.2em]", isSolidNav ? "text-zinc-300" : "text-zinc-500")}>Demo Concept</p>
             <p className={cn("truncate font-[var(--font-heading)] text-2xl leading-tight", isSolidNav ? "text-white" : "text-ink")}>{site.generatedContent.businessInfo.name}</p>
           </div>
-          <span className={cn("ml-4 rounded-full px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em]", isSolidNav ? "border border-zinc-700 bg-zinc-800 text-zinc-100" : "border border-zinc-300/70 bg-white/90 text-zinc-600")}>
-            {site.generatedContent.redesignPlan?.visualMood ?? site.templateType.replace("_", " ")}
-          </span>
+          {navItems.length ? (
+            <nav className={cn("ml-4 hidden items-center gap-4 text-xs font-medium md:flex", isSolidNav ? "text-zinc-200" : "text-zinc-600")}>
+              {navItems.map((item) => (
+                <span key={item}>{item}</span>
+              ))}
+            </nav>
+          ) : null}
         </header>
         {children}
       </div>

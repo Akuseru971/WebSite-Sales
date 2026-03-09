@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { DemoTemplateRenderer } from "@/components/demo-site/templates";
 import { getDemoSiteBySlug } from "@/lib/demo-sites/repository";
+import { deepDecodeHtmlEntities } from "@/lib/utils/html-entities";
 
 export const dynamic = "force-dynamic";
 
@@ -36,5 +37,10 @@ export default async function SitePage({ params }: SitePageProps) {
     notFound();
   }
 
-  return <DemoTemplateRenderer site={site} />;
+  const decodedSite = {
+    ...site,
+    generatedContent: deepDecodeHtmlEntities(site.generatedContent),
+  };
+
+  return <DemoTemplateRenderer site={decodedSite} />;
 }

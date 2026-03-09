@@ -1,4 +1,5 @@
 import type { StructuredBusinessExtraction } from "./types";
+import { decodeHtmlEntities } from "@/lib/utils/html-entities";
 
 function normalizeWebsite(website: string): string {
   const candidate = website.trim();
@@ -22,12 +23,14 @@ function toAbsoluteUrl(input: string, base: string): string | undefined {
 }
 
 function stripHtml(html: string): string {
-  return html
+  return decodeHtmlEntities(
+    html
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
-    .trim();
+    .trim(),
+  );
 }
 
 function uniqueStrings(values: string[], limit = 50): string[] {
@@ -74,7 +77,7 @@ function extractTags(html: string, tagName: string): string[] {
 function extractMetaContent(html: string, key: string): string | undefined {
   const regex = new RegExp(`<meta[^>]+(?:name|property)=["']${key}["'][^>]*content=["']([^"']+)["'][^>]*>`, "i");
   const match = html.match(regex);
-  return match?.[1]?.trim();
+  return match?.[1] ? decodeHtmlEntities(match[1].trim()) : undefined;
 }
 
 function extractTitle(html: string): string {
