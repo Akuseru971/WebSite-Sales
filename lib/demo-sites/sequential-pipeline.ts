@@ -14,6 +14,7 @@ import type {
 } from "@/lib/demo-sites/types";
 import type { EnrichedCommerceLead } from "@/lib/leads/enrichment";
 import { extractStructuredBusinessContent } from "@/lib/leads/extraction/playwright-extractor";
+import { extractStructuredBusinessContentWithFetchFallback } from "@/lib/leads/extraction/fetch-fallback-extractor";
 import { inferLocaleProfile, type SupportedLanguage } from "@/lib/i18n/locale";
 import { createResponseWithModelFallback } from "@/lib/openai/model-fallback";
 import { buildSupportedLocales, resolvePrimaryLocale } from "@/lib/demo-sites/locale-resolution";
@@ -423,7 +424,15 @@ export async function crawlWebsitePages(params: {
     throw new Error("No source website available for crawl step.");
   }
 
-  const extracted = fromEnrichment ?? (sourceUrl ? await extractStructuredBusinessContent(sourceUrl) : null);
+  let extracted = fromEnrichment ?? null;
+  if (!extracted && sourceUrl) {
+    try {
+      extracted = await extractStructuredBusinessContent(sourceUrl);
+    } catch {
+      extracted = await extractStructuredBusinessContentWithFetchFallback(sourceUrl);
+    }
+  }
+
   if (!extracted || extracted.pages.length === 0) {
     throw new Error("Website crawl returned no pages.");
   }
