@@ -240,15 +240,26 @@ export async function generateRestaurantTranslations(params: {
     };
 
     params.supportedLocales.forEach((locale) => {
+      const fallbackLocale = fallback[locale];
+      const aiLocale = parsed.locales?.[locale];
+
       merged[locale] = {
-        ...fallback[locale],
-        ...(parsed.locales?.[locale] ?? {}),
-        menuSections: parsed.locales?.[locale]?.menuSections?.length
-          ? parsed.locales[locale]?.menuSections
-          : fallback[locale]?.menuSections,
-        signatureHighlights: parsed.locales?.[locale]?.signatureHighlights?.length
-          ? parsed.locales[locale]?.signatureHighlights
-          : fallback[locale]?.signatureHighlights,
+        ...fallbackLocale,
+        ...aiLocale,
+        sectionLabels: {
+          ...(fallbackLocale?.sectionLabels ?? {}),
+          ...(aiLocale?.sectionLabels ?? {}),
+        },
+        cta: {
+          ...(fallbackLocale?.cta ?? {}),
+          ...(aiLocale?.cta ?? {}),
+        },
+        menuSections: aiLocale?.menuSections?.length
+          ? aiLocale.menuSections
+          : fallbackLocale?.menuSections,
+        signatureHighlights: aiLocale?.signatureHighlights?.length
+          ? aiLocale.signatureHighlights
+          : fallbackLocale?.signatureHighlights,
       } as RestaurantLocalizedContent;
     });
 
