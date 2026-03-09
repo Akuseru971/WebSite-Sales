@@ -838,7 +838,14 @@ export function normalizeDemoSiteContent(input: unknown): DemoSiteContent {
   }
 
   if (!isLegacyContent(input)) {
-    throw new Error("Invalid demo site content JSON structure.");
+    const details = parsed.error.issues
+      .slice(0, 5)
+      .map((issue) => {
+        const path = issue.path.length ? issue.path.join(".") : "root";
+        return `${path}: ${issue.message}`;
+      })
+      .join(" | ");
+    throw new Error(`Invalid demo site content JSON structure. ${details}`);
   }
 
   const legacy = input as Record<string, unknown>;

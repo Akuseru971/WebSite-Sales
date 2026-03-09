@@ -2,7 +2,6 @@ import type { DemoSiteContent, RestaurantContent, RestaurantDiagnostics, Restaur
 import type { EnrichedCommerceLead } from "@/lib/leads/enrichment";
 import { crawlRestaurantWebsite, type RestaurantCrawlResult, type RestaurantRawImage, type RestaurantRawMenuSection } from "@/lib/leads/extraction/restaurant-crawler";
 import { validateDemoSiteContent } from "@/lib/demo-sites/validation";
-import { inferLocaleProfile } from "@/lib/i18n/locale";
 import { buildSupportedLocales, resolvePrimaryLocale } from "@/lib/demo-sites/locale-resolution";
 import { generateRestaurantTranslations } from "@/lib/demo-sites/multilingual";
 import {
@@ -28,6 +27,36 @@ function uniqueStrings(values: string[], limit = 60): string[] {
   }
 
   return out;
+}
+
+function isValidHttpUrl(value?: string): value is string {
+  if (!value) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function normalizeWebsiteUrl(value?: string): string {
+  const raw = (value ?? "").trim();
+  if (!raw) {
+    return "https://example.com";
+  }
+
+  if (isValidHttpUrl(raw)) {
+    return raw;
+  }
+
+  if (isValidHttpUrl(`https://${raw}`)) {
+    return `https://${raw}`;
+  }
+
+  return "https://example.com";
 }
 
 function pickRestaurantName(crawl: RestaurantCrawlResult, fallback: string): { value: string; confidence: "high" | "medium" | "low"; candidates: string[] } {
@@ -349,9 +378,9 @@ function buildRestaurantVisualAssets(params: {
 }
 
 function buildFallbackRestaurantContent(enriched: EnrichedCommerceLead): RestaurantContent {
-  const locale = enriched.locale ?? inferLocaleProfile(enriched.lead.country);
   const primaryLocale = resolvePrimaryLocale(enriched.lead.city, enriched.lead.country);
   const supportedLocales = buildSupportedLocales(primaryLocale);
+  const cleanImages = enriched.suggestedImages.filter((url) => isValidHttpUrl(url));
 
   return {
     restaurantName: enriched.lead.businessName,
@@ -364,8 +393,8 @@ function buildFallbackRestaurantContent(enriched: EnrichedCommerceLead): Restaur
       secondary: "#f4eee6",
       accent: "#b8833f",
     },
-    heroImages: enriched.suggestedImages.slice(0, 3),
-    galleryImages: enriched.suggestedImages.slice(0, 10),
+    heroImages: cleanImages.slice(0, 3),
+    galleryImages: cleanImages.slice(0, 10),
     contact: {
       phone: enriched.lead.phone,
       email: enriched.lead.email,
@@ -382,7 +411,7 @@ function buildFallbackRestaurantContent(enriched: EnrichedCommerceLead): Restaur
     socialLinks: [],
     visualAssets: [],
     translations: {},
-    sourceUrl: enriched.lead.website?.startsWith("http") ? enriched.lead.website : `https://${enriched.lead.website ?? locale.country}`,
+    sourceUrl: normalizeWebsiteUrl(enriched.lead.website),
     extractionConfidence: {
       content: "low",
       images: enriched.suggestedImages.length ? "medium" : "low",
