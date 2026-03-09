@@ -77,4 +77,80 @@ body {
     background-image: radial-gradient(rgba(17, 16, 21, 0.06) 0.5px, transparent 0.5px);
     background-size: 3px 3px;
   }
+
+  .restaurant-luxe {
+    background:
+      radial-gradient(circle at 12% 0%, color-mix(in srgb, var(--restaurant-accent) 22%, transparent), transparent 36%),
+      radial-gradient(circle at 88% 8%, color-mix(in srgb, var(--restaurant-primary) 28%, transparent), transparent 38%),
+      linear-gradient(180deg, color-mix(in srgb, var(--restaurant-secondary) 70%, #fff), #f6f1ea 58%, #f2ece3);
+  }
+
+  .restaurant-hero-overlay {
+    background:
+      radial-gradient(circle at 18% 12%, rgba(255, 255, 255, 0.22), transparent 36%),
+      linear-gradient(110deg, color-mix(in srgb, var(--restaurant-primary) 93%, #000) 16%, color-mix(in srgb, var(--restaurant-primary) 78%, #000) 46%, rgba(0, 0, 0, 0.55) 100%);
+  }
+
+  .restaurant-kicker {
+    @apply text-xs font-semibold uppercase tracking-[0.2em];
+    color: var(--restaurant-accent);
+  }
+
+  .restaurant-cta-btn {
+    @apply inline-flex items-center rounded-full px-6 py-3 text-sm font-semibold transition;
+    background: var(--restaurant-accent);
+    color: #24170f;
+    box-shadow: 0 14px 26px rgba(36, 23, 15, 0.22);
+  }
+
+  .restaurant-cta-btn:hover {
+    transform: translateY(-1px);
+    filter: saturate(1.05);
+  }
+
+  .restaurant-ghost-btn {
+    @apply inline-flex items-center rounded-full border border-white/45 bg-white/10 px-6 py-3 text-sm font-semibold text-white backdrop-blur transition;
+  }
+
+  .restaurant-ghost-btn:hover {
+    transform: translateY(-1px);
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  .restaurant-ghost-dark-btn {
+    @apply inline-flex items-center rounded-full border px-4 py-2 text-xs font-semibold uppercase tracking-[0.12em] transition;
+    border-color: color-mix(in srgb, var(--restaurant-primary) 72%, #fff);
+    color: var(--restaurant-primary);
+    background: rgba(255, 255, 255, 0.7);
+  }
+
+  .restaurant-ghost-dark-btn:hover {
+    background: rgba(255, 255, 255, 0.96);
+  }
+
+  .restaurant-stat-chip {
+    @apply rounded-xl border border-white/25 bg-white/10 px-3 py-2 text-center text-xs font-semibold uppercase tracking-[0.11em] text-white/90 backdrop-blur;
+  }
+
+  .restaurant-fade-up {
+    animation: restaurantFadeUp 700ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  @keyframes restaurantFadeUp {
+    from {
+      opacity: 0;
+      transform: translateY(22px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .restaurant-fade-up {
+      animation: none;
+    }
+  }
 }
