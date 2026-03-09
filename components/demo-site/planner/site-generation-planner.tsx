@@ -64,6 +64,19 @@ function getLeadWebsiteUrl(website?: string): string | null {
   return trimmed.startsWith("http") ? trimmed : `https://${trimmed}`;
 }
 
+async function readApiPayload(response: Response): Promise<Record<string, unknown>> {
+  const raw = await response.text();
+  if (!raw) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(raw) as Record<string, unknown>;
+  } catch {
+    return { error: raw };
+  }
+}
+
 async function searchLeads(params: {
   city: string;
   categories: BusinessCategory[];
@@ -80,9 +93,13 @@ async function searchLeads(params: {
     })
   });
 
-  const payload = await response.json();
+  const payload = await readApiPayload(response);
   if (!response.ok) {
-    throw new Error(payload.error ?? "Recherche impossible.");
+    const message =
+      typeof payload.error === "string" && payload.error.trim()
+        ? payload.error
+        : "Recherche impossible.";
+    throw new Error(message);
   }
 
   return Array.isArray(payload.leads) ? (payload.leads as CommerceLead[]) : [];
@@ -233,16 +250,24 @@ export function SiteGenerationPlanner() {
         })
       });
 
-      const payload = await response.json();
+      const payload = await readApiPayload(response);
       if (!response.ok) {
-        throw new Error(payload.error ?? "Generation API failed.");
+        const message =
+          typeof payload.error === "string" && payload.error.trim()
+            ? payload.error
+            : "Generation API failed.";
+        throw new Error(message);
       }
 
-      const siteId = payload.site?.id as string | undefined;
-      const siteUrl = payload.site?.previewUrl as string | undefined;
-      const localeLanguage = payload.locale?.language as string | undefined;
-      const outreachEmailSubject = payload.outreachEmail?.subject as string | undefined;
-      const outreachEmailBody = payload.outreachEmail?.body as string | undefined;
+      const site = payload.site as Record<string, unknown> | undefined;
+      const locale = payload.locale as Record<string, unknown> | undefined;
+      const outreachEmail = payload.outreachEmail as Record<string, unknown> | undefined;
+
+      const siteId = typeof site?.id === "string" ? site.id : undefined;
+      const siteUrl = typeof site?.previewUrl === "string" ? site.previewUrl : undefined;
+      const localeLanguage = typeof locale?.language === "string" ? locale.language : undefined;
+      const outreachEmailSubject = typeof outreachEmail?.subject === "string" ? outreachEmail.subject : undefined;
+      const outreachEmailBody = typeof outreachEmail?.body === "string" ? outreachEmail.body : undefined;
 
       setPlannedGenerations((previous) =>
         previous.map((item) =>
