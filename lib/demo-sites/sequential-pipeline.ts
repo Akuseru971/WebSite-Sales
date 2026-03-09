@@ -1714,7 +1714,10 @@ function auditRestaurantSemantics(input: {
     failedChecks.push("opening_hours_missing");
   }
 
-  if (!restaurant.contact.address || !restaurant.contact.phone || !restaurant.contact.email) {
+  const hasAddress = Boolean(restaurant.contact.address?.trim());
+  const hasPhone = Boolean(restaurant.contact.phone?.trim());
+  const hasEmail = Boolean(restaurant.contact.email?.trim());
+  if (!hasAddress || !hasPhone || !hasEmail) {
     failedChecks.push("contact_blocks_incomplete");
   }
 
@@ -1772,6 +1775,49 @@ function applyRestaurantAuditCorrections(input: {
 
   if (!next.restaurantContent.openingHours?.length) {
     next.restaurantContent.openingHours = [input.expectedPrimaryLocale === "fr" ? "Horaires sur demande" : "Opening hours on request"];
+  }
+
+  const missingText = input.expectedPrimaryLocale === "fr" ? "Non renseigne" : "Not provided";
+  const normalizeOptional = (value?: string): string | undefined => {
+    if (!value) return undefined;
+    const normalized = value.trim();
+    return normalized.length > 0 ? normalized : undefined;
+  };
+
+  const fallbackEmail = `${next.businessInfo.name.toLowerCase().replace(/\s+/g, "")}@example.com`;
+  next.restaurantContent.contact.phone =
+    normalizeOptional(next.restaurantContent.contact.phone) ??
+    normalizeOptional(next.businessInfo.phone) ??
+    normalizeOptional(next.contact.phone) ??
+    missingText;
+  next.restaurantContent.contact.email =
+    normalizeOptional(next.restaurantContent.contact.email) ??
+    normalizeOptional(next.businessInfo.email) ??
+    normalizeOptional(next.contact.email) ??
+    fallbackEmail;
+  next.restaurantContent.contact.address =
+    normalizeOptional(next.restaurantContent.contact.address) ??
+    normalizeOptional(next.businessInfo.address) ??
+    missingText;
+
+  next.contact.phone = normalizeOptional(next.contact.phone) ?? next.restaurantContent.contact.phone;
+  next.contact.email = normalizeOptional(next.contact.email) ?? next.restaurantContent.contact.email;
+
+  const contactSectionIndex = next.sections.findIndex((section) => section.type === "contact");
+  if (contactSectionIndex >= 0) {
+    const contactSection = next.sections[contactSectionIndex];
+    if (contactSection.type === "contact") {
+      next.sections[contactSectionIndex] = {
+        ...contactSection,
+        content: {
+          ...contactSection.content,
+          address: contactSection.content.address ?? next.restaurantContent.contact.address,
+          phone: contactSection.content.phone ?? next.restaurantContent.contact.phone,
+          email: contactSection.content.email ?? next.restaurantContent.contact.email,
+          hours: contactSection.content.hours?.length ? contactSection.content.hours : next.restaurantContent.openingHours,
+        },
+      };
+    }
   }
 
   next.sections = next.sections.filter((section) => section.type !== "services");
