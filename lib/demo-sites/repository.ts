@@ -24,6 +24,10 @@ function toLegacyDemoSitePayload(payload: Record<string, unknown>): Record<strin
   delete legacy.source_screenshots_json;
   delete legacy.source_structure_json;
   delete legacy.source_brand_signals_json;
+  delete legacy.source_reconstructed_html;
+  delete legacy.source_content_json;
+  delete legacy.source_assets_json;
+  delete legacy.redesigned_site_json;
   return legacy;
 }
 
@@ -77,8 +81,12 @@ function mapDbDemoSiteRow(row: Record<string, unknown>): DemoSiteRecord {
     redesignPlanJson: (row.redesign_plan_json as DemoSiteRecord["redesignPlanJson"]) ?? normalized.redesignPlan,
     adaptiveSiteJson: (row.adaptive_site_json as DemoSiteRecord["adaptiveSiteJson"]) ?? normalized.adaptiveSiteJson,
     sourceScreenshotsJson: (row.source_screenshots_json as DemoSiteRecord["sourceScreenshotsJson"]) ?? normalized.extractedSiteProfile?.sourceScreenshots,
-    sourceStructureJson: (row.source_structure_json as DemoSiteRecord["sourceStructureJson"]) ?? normalized.extractedSiteProfile?.structuralIdentity.structureSummary,
+    sourceStructureJson: (row.source_structure_json as DemoSiteRecord["sourceStructureJson"]) ?? normalized.sourceStructureJson,
     sourceBrandSignalsJson: (row.source_brand_signals_json as DemoSiteRecord["sourceBrandSignalsJson"]) ?? normalized.extractedSiteProfile?.businessIdentity,
+    sourceReconstructedHtml: (row.source_reconstructed_html as DemoSiteRecord["sourceReconstructedHtml"]) ?? normalized.sourceReconstructedHtml,
+    sourceContentJson: (row.source_content_json as DemoSiteRecord["sourceContentJson"]) ?? normalized.sourceContentJson,
+    sourceAssetsJson: (row.source_assets_json as DemoSiteRecord["sourceAssetsJson"]) ?? normalized.sourceAssetsJson,
+    redesignedSiteJson: (row.redesigned_site_json as DemoSiteRecord["redesignedSiteJson"]) ?? normalized,
   };
 }
 
@@ -174,8 +182,12 @@ export async function saveDemoSiteContent(input: SaveDemoSiteContentInput): Prom
     redesign_plan_json: validatedContent.redesignPlan ?? null,
     adaptive_site_json: validatedContent.adaptiveSiteJson ?? null,
     source_screenshots_json: validatedContent.extractedSiteProfile?.sourceScreenshots ?? null,
-    source_structure_json: validatedContent.extractedSiteProfile?.structuralIdentity.structureSummary ?? null,
+    source_structure_json: validatedContent.sourceStructureJson ?? null,
     source_brand_signals_json: validatedContent.extractedSiteProfile?.businessIdentity ?? null,
+    source_reconstructed_html: validatedContent.sourceReconstructedHtml ?? null,
+    source_content_json: validatedContent.sourceContentJson ?? null,
+    source_assets_json: validatedContent.sourceAssetsJson ?? null,
+    redesigned_site_json: validatedContent,
     updated_at: new Date().toISOString()
   };
 
@@ -254,8 +266,12 @@ export async function createGeneratedDemoSite(params: {
     redesign_plan_json: validatedContent.redesignPlan ?? null,
     adaptive_site_json: validatedContent.adaptiveSiteJson ?? null,
     source_screenshots_json: validatedContent.extractedSiteProfile?.sourceScreenshots ?? null,
-    source_structure_json: validatedContent.extractedSiteProfile?.structuralIdentity.structureSummary ?? null,
+    source_structure_json: validatedContent.sourceStructureJson ?? null,
     source_brand_signals_json: validatedContent.extractedSiteProfile?.businessIdentity ?? null,
+    source_reconstructed_html: validatedContent.sourceReconstructedHtml ?? null,
+    source_content_json: validatedContent.sourceContentJson ?? null,
+    source_assets_json: validatedContent.sourceAssetsJson ?? null,
+    redesigned_site_json: validatedContent,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   };

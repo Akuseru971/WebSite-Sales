@@ -137,6 +137,47 @@ export interface AdaptiveSiteComposition {
   animationStyle: "subtle" | "staggered" | "cinematic";
 }
 
+export interface SourceStructureNode {
+  pageUrl: string;
+  sectionKey: string;
+  heading?: string;
+  paragraphs: string[];
+  ctas: string[];
+  imageUrls: string[];
+  order: number;
+}
+
+export interface SourceStructureJson {
+  pages: Array<{
+    url: string;
+    title: string;
+    navItems: string[];
+    sectionKeys: string[];
+  }>;
+  nodes: SourceStructureNode[];
+}
+
+export interface SourceContentJson {
+  headings: string[];
+  paragraphs: string[];
+  ctas: string[];
+  services: string[];
+  menuItems: string[];
+  testimonials: string[];
+  contacts: {
+    phones: string[];
+    emails: string[];
+    addresses: string[];
+  };
+}
+
+export interface SourceAssetsJson {
+  logoUrl?: string;
+  heroImages: string[];
+  galleryImages: string[];
+  allImages: string[];
+}
+
 export interface BusinessInfo {
   name: string;
   category: BusinessCategory;
@@ -341,6 +382,10 @@ export interface DemoSiteContent {
   contact: SiteContactConfig;
   sections: DemoSection[];
   extractedSiteProfile?: ExtractedSiteProfile;
+  sourceReconstructedHtml?: string;
+  sourceStructureJson?: SourceStructureJson;
+  sourceContentJson?: SourceContentJson;
+  sourceAssetsJson?: SourceAssetsJson;
   redesignPlan?: RedesignPlan;
   adaptiveSiteJson?: AdaptiveSiteComposition;
 }
@@ -361,8 +406,12 @@ export interface DemoSiteRecord {
   redesignPlanJson?: RedesignPlan;
   adaptiveSiteJson?: AdaptiveSiteComposition;
   sourceScreenshotsJson?: SourceScreenshotAsset[];
-  sourceStructureJson?: SourceStructureSummary;
+  sourceStructureJson?: SourceStructureJson;
   sourceBrandSignalsJson?: SourceBrandSignals;
+  sourceReconstructedHtml?: string;
+  sourceContentJson?: SourceContentJson;
+  sourceAssetsJson?: SourceAssetsJson;
+  redesignedSiteJson?: DemoSiteContent;
 }
 
 export interface DemoSiteVersion {

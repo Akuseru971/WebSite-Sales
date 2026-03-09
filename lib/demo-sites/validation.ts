@@ -196,6 +196,53 @@ export const demoSiteContentSchema: z.ZodType<DemoSiteContent> = z.object({
     mapEmbedUrl: z.string().optional()
   }),
   sections: z.array(demoSectionSchema).min(1),
+  sourceReconstructedHtml: z.string().optional(),
+  sourceStructureJson: z
+    .object({
+      pages: z.array(
+        z.object({
+          url: z.string().url(),
+          title: z.string(),
+          navItems: z.array(z.string()),
+          sectionKeys: z.array(z.string()),
+        }),
+      ),
+      nodes: z.array(
+        z.object({
+          pageUrl: z.string().url(),
+          sectionKey: z.string(),
+          heading: z.string().optional(),
+          paragraphs: z.array(z.string()),
+          ctas: z.array(z.string()),
+          imageUrls: z.array(z.string().url()),
+          order: z.number().int().min(0),
+        }),
+      ),
+    })
+    .optional(),
+  sourceContentJson: z
+    .object({
+      headings: z.array(z.string()),
+      paragraphs: z.array(z.string()),
+      ctas: z.array(z.string()),
+      services: z.array(z.string()),
+      menuItems: z.array(z.string()),
+      testimonials: z.array(z.string()),
+      contacts: z.object({
+        phones: z.array(z.string()),
+        emails: z.array(z.string()),
+        addresses: z.array(z.string()),
+      }),
+    })
+    .optional(),
+  sourceAssetsJson: z
+    .object({
+      logoUrl: z.string().url().optional(),
+      heroImages: z.array(z.string().url()),
+      galleryImages: z.array(z.string().url()),
+      allImages: z.array(z.string().url()),
+    })
+    .optional(),
   extractedSiteProfile: z
     .object({
       sourceUrl: z.string().url(),

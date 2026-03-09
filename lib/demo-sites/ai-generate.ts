@@ -7,9 +7,7 @@ import type {
   RedesignPlan,
   SectionType,
 } from "./types";
-import { updateDemoSiteJsonWithAI } from "./ai-edit";
 import type { EnrichedCommerceLead } from "@/lib/leads/enrichment";
-import type { StructuredBusinessExtraction } from "@/lib/leads/extraction/types";
 import { validateDemoSiteContent } from "./validation";
 import { inferLocaleProfile } from "@/lib/i18n/locale";
 import {
@@ -17,18 +15,17 @@ import {
   createRedesignPlan,
   generateAdaptiveDemoSiteJson,
 } from "@/lib/demo-sites/redesign-intelligence";
-
-interface SourcePreservationBundle {
-  mustKeepHeadings: string[];
-  mustKeepServices: string[];
-  mustKeepMenuItems: string[];
-  mustKeepImages: string[];
-  mustKeepContact: {
-    phones: string[];
-    emails: string[];
-    addresses: string[];
-  };
-}
+import {
+  applyPremiumVisualLayer,
+  buildRedesignPromptFromSource,
+  buildSourceStructureJson,
+  crawlWebsitePages,
+  extractSourceAssets,
+  extractSourceBrandSignals,
+  extractStructuredSourceContent,
+  generateRedesignedSiteFromSource,
+  reconstructSourceWebsiteHtml,
+} from "@/lib/demo-sites/source-redesign-pipeline";
 
 function uniqueStrings(values: string[], limit = 20): string[] {
   const seen = new Set<string>();
@@ -358,22 +355,6 @@ function buildSectionsFromSource(params: {
   return built.sort((a, b) => a.order - b.order);
 }
 
-function buildSourcePreservationBundle(enriched: EnrichedCommerceLead): SourcePreservationBundle {
-  const extracted = enriched.extractedWebsite;
-
-  return {
-    mustKeepHeadings: (extracted?.keyHeadings ?? []).slice(0, 20),
-    mustKeepServices: (extracted?.serviceDescriptions ?? []).slice(0, 20),
-    mustKeepMenuItems: enriched.inferredMenuItems.slice(0, 24),
-    mustKeepImages: enriched.suggestedImages.slice(0, 24),
-    mustKeepContact: {
-      phones: (extracted?.contact.phones ?? []).slice(0, 8),
-      emails: (extracted?.contact.emails ?? []).slice(0, 8),
-      addresses: (extracted?.contact.addresses ?? []).slice(0, 6),
-    },
-  };
-}
-
 function compressHomepageDensity(content: DemoSiteContent): DemoSiteContent {
   const next = JSON.parse(JSON.stringify(content)) as DemoSiteContent;
   const overflowFaqs: Array<{ question: string; answer: string }> = [];
@@ -446,85 +427,6 @@ function compressHomepageDensity(content: DemoSiteContent): DemoSiteContent {
   return validateDemoSiteContent(next);
 }
 
-function summarizeExtractionForPrompt(extracted?: StructuredBusinessExtraction): string {
-  if (!extracted) {
-    return "No structured extraction available.";
-  }
-
-  return JSON.stringify(
-    {
-      sourceWebsite: extracted.sourceWebsite,
-      pages: extracted.pages.map((page) => ({
-        url: page.url,
-        title: page.title,
-        description: page.description,
-        headings: page.headings.slice(0, 8),
-        paragraphs: page.paragraphs.slice(0, 8),
-        ctaPhrases: page.ctaPhrases.slice(0, 8),
-      })),
-      keyHeadings: extracted.keyHeadings.slice(0, 24),
-      aboutText: extracted.aboutText.slice(0, 12),
-      serviceDescriptions: extracted.serviceDescriptions.slice(0, 16),
-      ctaPhrases: extracted.ctaPhrases.slice(0, 16),
-      contact: extracted.contact,
-      themeHints: extracted.themeHints,
-      navItems: extracted.navItems,
-      toneHints: extracted.toneHints,
-    },
-    null,
-    2,
-  );
-}
-
-function buildPrompt(params: {
-  category: BusinessCategory;
-  style: DemoSiteStyle;
-  siteLabel: string;
-  enriched: EnrichedCommerceLead;
-  siteProfileSummary: string;
-  redesignPlanSummary: string;
-  sourcePreservationSummary: string;
-}): string {
-  const lead = params.enriched.lead;
-  const locale = params.enriched.locale ?? inferLocaleProfile(lead.country);
-
-  return [
-    `You are redesigning an existing business website as a top-tier web agency.`,
-    `Start from the source website identity and preserve recognizability while massively improving execution quality.`,
-    `Business category (context only, not template): ${params.category}`,
-    `Design direction seed: ${params.style}`,
-    `Variant label: ${params.siteLabel}`,
-    `Business name: ${lead.businessName}`,
-    `City: ${lead.city}`,
-    `Address: ${lead.address ?? "unknown"}`,
-    `Phone: ${lead.phone ?? "unknown"}`,
-    `Email: ${lead.email ?? "unknown"}`,
-    `Website: ${lead.website ?? "unknown"}`,
-    `Country: ${lead.country ?? locale.country}`,
-    `Target language code: ${locale.language}`,
-    `Target language label: ${locale.languageLabel}`,
-    `Structured extraction (primary source):`,
-    summarizeExtractionForPrompt(params.enriched.extractedWebsite),
-    `Extracted site profile:`,
-    params.siteProfileSummary,
-    `Redesign plan:`,
-    params.redesignPlanSummary,
-    `Source preservation bundle:`,
-    params.sourcePreservationSummary,
-    `Absolute rules:`,
-    `- Do not output a generic template-style website.`,
-    `- Preserve source identity markers, tone, strong copy, and authentic media.`,
-    `- Keep real sections and structure logic when valuable, improve weak hierarchy.`,
-    `- Improve spacing, typography, readability, visual hierarchy, and conversion flow.`,
-    `- Keep CTA logic recognizable but cleaner and more persuasive.`,
-    `- If homepage content is too heavy, summarize and relocate details into deeper sections (FAQ/details).`,
-    `- Do not delete valuable source information without giving it a place.`,
-    `- Keep all JSON schema fields valid.`,
-    `- Write all copy in ${locale.languageLabel} (${locale.language}).`,
-    `- Do not invent hard facts not present in source data.`,
-  ].join("\n");
-}
-
 export async function generateDemoSiteContentWithAI(params: {
   category: BusinessCategory;
   style: DemoSiteStyle;
@@ -549,7 +451,15 @@ export async function generateDemoSiteContentWithAI(params: {
 
   const extractedSiteProfile = analyzeSourceWebsiteIdentity(params.enriched);
   const redesignPlan = await createRedesignPlan(extractedSiteProfile);
-  const sourcePreservationBundle = buildSourcePreservationBundle(params.enriched);
+  const sourcePages = crawlWebsitePages(params.enriched);
+  const sourceReconstructedHtml = reconstructSourceWebsiteHtml({ pages: sourcePages });
+  const sourceStructureJson = buildSourceStructureJson({ pages: sourcePages });
+  const sourceContentJson = extractStructuredSourceContent({
+    enriched: params.enriched,
+    pages: sourcePages,
+  });
+  const sourceAssetsJson = extractSourceAssets(params.enriched);
+  const sourceBrandSignals = extractSourceBrandSignals(params.enriched);
 
   const sections = buildSectionsFromSource({
     enriched: params.enriched,
@@ -599,30 +509,47 @@ export async function generateDemoSiteContentWithAI(params: {
   baseContent = compressHomepageDensity({
     ...baseContent,
     extractedSiteProfile,
+    sourceReconstructedHtml,
+    sourceStructureJson,
+    sourceContentJson,
+    sourceAssetsJson,
     redesignPlan,
     adaptiveSiteJson,
   });
 
-  const siteProfileSummary = JSON.stringify(extractedSiteProfile, null, 2);
-  const redesignPlanSummary = JSON.stringify(redesignPlan, null, 2);
-  const sourcePreservationSummary = JSON.stringify(sourcePreservationBundle, null, 2);
+  const sourcePrompt = buildRedesignPromptFromSource({
+    sourceReconstructedHtml,
+    sourceStructureJson,
+    sourceContentJson,
+    sourceAssetsJson,
+    sourceBrandSignals,
+    redesignPlan,
+    category: params.category,
+    style: params.style,
+    languageLabel: locale.languageLabel,
+    languageCode: locale.language,
+  });
 
   try {
-    const result = await updateDemoSiteJsonWithAI({
+    const redesignedContent = await generateRedesignedSiteFromSource({
       currentContent: baseContent,
-      instruction: buildPrompt({
-        ...params,
-        siteProfileSummary,
-        redesignPlanSummary,
-        sourcePreservationSummary,
-      }),
+      prompt: sourcePrompt,
+    });
+
+    const premiumContent = applyPremiumVisualLayer({
+      content: redesignedContent,
+      redesignPlan,
     });
 
     return compressHomepageDensity(validateDemoSiteContent({
-      ...result.suggestedContent,
+      ...premiumContent,
       extractedSiteProfile,
+      sourceReconstructedHtml,
+      sourceStructureJson,
+      sourceContentJson,
+      sourceAssetsJson,
       redesignPlan,
-      adaptiveSiteJson,
+      adaptiveSiteJson: premiumContent.adaptiveSiteJson ?? adaptiveSiteJson,
     }));
   } catch {
     return baseContent;
