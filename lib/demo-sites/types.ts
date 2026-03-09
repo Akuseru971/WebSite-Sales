@@ -184,6 +184,96 @@ export interface GeneratedHtmlPreview {
   metadata?: Record<string, unknown>;
 }
 
+export type ExtractionConfidenceLevel = "high" | "medium" | "low";
+export type MenuConfidenceLevel = ExtractionConfidenceLevel | "none";
+export type ColorConfidenceLevel = ExtractionConfidenceLevel | "none";
+
+export interface RestaurantMenuItem {
+  name: string;
+  description?: string;
+  price?: string;
+}
+
+export interface RestaurantMenuSection {
+  title: string;
+  items: RestaurantMenuItem[];
+}
+
+export interface RestaurantTestimonial {
+  author?: string;
+  text: string;
+}
+
+export interface RestaurantSocialLink {
+  platform: string;
+  url: string;
+}
+
+export interface RestaurantContent {
+  restaurantName: string;
+  tagline?: string;
+  shortDescription?: string;
+  brandColors: {
+    primary?: string;
+    secondary?: string;
+    accent?: string;
+  };
+  logoUrl?: string;
+  heroImages: string[];
+  galleryImages: string[];
+  contact: {
+    phone?: string;
+    email?: string;
+    address?: string;
+    whatsapp?: string;
+  };
+  openingHours?: string[];
+  reservation?: {
+    label?: string;
+    url?: string;
+  };
+  menuSections: RestaurantMenuSection[];
+  menuPdfUrls: string[];
+  menuPubliclyAvailable: boolean;
+  testimonials: RestaurantTestimonial[];
+  aboutText?: string;
+  signatureHighlights: string[];
+  socialLinks: RestaurantSocialLink[];
+  sourceUrl: string;
+  extractionConfidence: {
+    content: ExtractionConfidenceLevel;
+    images: ExtractionConfidenceLevel;
+    menu: MenuConfidenceLevel;
+    colors: ColorConfidenceLevel;
+  };
+}
+
+export interface RestaurantDiagnostics {
+  extractedRawContent: {
+    pagesCrawled: string[];
+    candidateNames: string[];
+    aboutCandidates: string[];
+    menuSectionTitles: string[];
+  };
+  extractedImages: Array<{
+    url: string;
+    role: "logo" | "hero" | "food" | "interior" | "gallery" | "team" | "decorative" | "unknown";
+    width: number;
+    height: number;
+    sourcePage: string;
+  }>;
+  extractedBrandColors: string[];
+  missingFields: string[];
+  confidence: {
+    restaurantName: ExtractionConfidenceLevel;
+    colors: ColorConfidenceLevel;
+    menu: MenuConfidenceLevel;
+    heroImages: ExtractionConfidenceLevel;
+    gallery: ExtractionConfidenceLevel;
+    contact: ExtractionConfidenceLevel;
+  };
+}
+
 export interface BusinessInfo {
   name: string;
   category: BusinessCategory;
@@ -393,6 +483,8 @@ export interface DemoSiteContent {
   sourceContentJson?: SourceContentJson;
   sourceAssetsJson?: SourceAssetsJson;
   generatedHtmlPreview?: GeneratedHtmlPreview;
+  restaurantContent?: RestaurantContent;
+  restaurantDiagnostics?: RestaurantDiagnostics;
   redesignPlan?: RedesignPlan;
   adaptiveSiteJson?: AdaptiveSiteComposition;
 }

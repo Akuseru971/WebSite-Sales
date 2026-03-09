@@ -83,6 +83,12 @@ export async function POST(request: Request) {
         redesignPlanReady: Boolean(content.redesignPlan),
         extractedProfileReady: Boolean(content.extractedSiteProfile),
         adaptiveCompositionReady: Boolean(content.adaptiveSiteJson),
+        restaurantDiagnostics: content.restaurantDiagnostics
+          ? {
+              missingFields: content.restaurantDiagnostics.missingFields,
+              confidence: content.restaurantDiagnostics.confidence,
+            }
+          : undefined,
       }
     });
   } catch (error) {

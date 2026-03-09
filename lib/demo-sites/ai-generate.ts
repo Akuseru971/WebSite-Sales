@@ -26,6 +26,7 @@ import {
   generateRedesignedHtmlFromSource,
   reconstructSourceWebsiteHtml,
 } from "@/lib/demo-sites/source-redesign-pipeline";
+import { generateRestaurantDemoSiteContent } from "@/lib/demo-sites/restaurant-generation";
 
 function uniqueStrings(values: string[], limit = 20): string[] {
   const seen = new Set<string>();
@@ -452,6 +453,12 @@ export async function generateDemoSiteContentWithAI(params: {
   siteLabel: string;
   enriched: EnrichedCommerceLead;
 }): Promise<DemoSiteContent> {
+  if (params.category === "restaurant") {
+    return generateRestaurantDemoSiteContent({
+      enriched: params.enriched,
+    });
+  }
+
   if (
     params.enriched.lead.website &&
     (!params.enriched.extractedWebsite ||

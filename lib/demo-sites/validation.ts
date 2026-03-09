@@ -250,6 +250,86 @@ export const demoSiteContentSchema: z.ZodType<DemoSiteContent> = z.object({
       metadata: z.record(z.string(), z.unknown()).optional(),
     })
     .optional(),
+  restaurantContent: z
+    .object({
+      restaurantName: z.string().min(1),
+      tagline: z.string().optional(),
+      shortDescription: z.string().optional(),
+      brandColors: z.object({
+        primary: z.string().optional(),
+        secondary: z.string().optional(),
+        accent: z.string().optional(),
+      }),
+      logoUrl: z.string().url().optional(),
+      heroImages: z.array(z.string().url()),
+      galleryImages: z.array(z.string().url()),
+      contact: z.object({
+        phone: z.string().optional(),
+        email: z.string().optional(),
+        address: z.string().optional(),
+        whatsapp: z.string().optional(),
+      }),
+      openingHours: z.array(z.string()).optional(),
+      reservation: z.object({
+        label: z.string().optional(),
+        url: z.string().url().optional(),
+      }).optional(),
+      menuSections: z.array(z.object({
+        title: z.string().min(1),
+        items: z.array(z.object({
+          name: z.string().min(1),
+          description: z.string().optional(),
+          price: z.string().optional(),
+        })),
+      })),
+      menuPdfUrls: z.array(z.string().url()),
+      menuPubliclyAvailable: z.boolean(),
+      testimonials: z.array(z.object({
+        author: z.string().optional(),
+        text: z.string().min(1),
+      })),
+      aboutText: z.string().optional(),
+      signatureHighlights: z.array(z.string()),
+      socialLinks: z.array(z.object({
+        platform: z.string().min(1),
+        url: z.string().url(),
+      })),
+      sourceUrl: z.string().url(),
+      extractionConfidence: z.object({
+        content: z.enum(["high", "medium", "low"]),
+        images: z.enum(["high", "medium", "low"]),
+        menu: z.enum(["high", "medium", "low", "none"]),
+        colors: z.enum(["high", "medium", "low", "none"]),
+      }),
+    })
+    .optional(),
+  restaurantDiagnostics: z
+    .object({
+      extractedRawContent: z.object({
+        pagesCrawled: z.array(z.string().url()),
+        candidateNames: z.array(z.string()),
+        aboutCandidates: z.array(z.string()),
+        menuSectionTitles: z.array(z.string()),
+      }),
+      extractedImages: z.array(z.object({
+        url: z.string().url(),
+        role: z.enum(["logo", "hero", "food", "interior", "gallery", "team", "decorative", "unknown"]),
+        width: z.number().int().min(1),
+        height: z.number().int().min(1),
+        sourcePage: z.string().url(),
+      })),
+      extractedBrandColors: z.array(z.string()),
+      missingFields: z.array(z.string()),
+      confidence: z.object({
+        restaurantName: z.enum(["high", "medium", "low"]),
+        colors: z.enum(["high", "medium", "low", "none"]),
+        menu: z.enum(["high", "medium", "low", "none"]),
+        heroImages: z.enum(["high", "medium", "low"]),
+        gallery: z.enum(["high", "medium", "low"]),
+        contact: z.enum(["high", "medium", "low"]),
+      }),
+    })
+    .optional(),
   extractedSiteProfile: z
     .object({
       sourceUrl: z.string().url(),
