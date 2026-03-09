@@ -77,6 +77,10 @@ async function readApiPayload(response: Response): Promise<Record<string, unknow
   }
 }
 
+function asObject(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" ? (value as Record<string, unknown>) : undefined;
+}
+
 async function searchLeads(params: {
   city: string;
   categories: BusinessCategory[];
@@ -259,15 +263,49 @@ export function SiteGenerationPlanner() {
         throw new Error(message);
       }
 
-      const site = payload.site as Record<string, unknown> | undefined;
-      const locale = payload.locale as Record<string, unknown> | undefined;
-      const outreachEmail = payload.outreachEmail as Record<string, unknown> | undefined;
+      const job = asObject(payload.job);
+      const jobId = typeof job?.id === "string" ? job.id : undefined;
+      if (!jobId) {
+        throw new Error("Generation job id missing.");
+      }
 
-      const siteId = typeof site?.id === "string" ? site.id : undefined;
-      const siteUrl = typeof site?.previewUrl === "string" ? site.previewUrl : undefined;
-      const localeLanguage = typeof locale?.language === "string" ? locale.language : undefined;
-      const outreachEmailSubject = typeof outreachEmail?.subject === "string" ? outreachEmail.subject : undefined;
-      const outreachEmailBody = typeof outreachEmail?.body === "string" ? outreachEmail.body : undefined;
+      let finalJob: Record<string, unknown> | undefined;
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        const advanceResponse = await fetch(`/api/demo-sites/generate/${jobId}/advance`, {
+          method: "POST",
+        });
+
+        const advancePayload = await readApiPayload(advanceResponse);
+        const advancedJob = asObject(advancePayload.job);
+        finalJob = advancedJob;
+
+        const status = typeof advancedJob?.status === "string" ? advancedJob.status : "";
+        if (status === "completed") {
+          break;
+        }
+
+        if (status === "failed") {
+          const err = typeof advancedJob?.errorMessage === "string"
+            ? advancedJob.errorMessage
+            : (typeof advancePayload.error === "string" ? advancePayload.error : "Generation failed.");
+          throw new Error(err);
+        }
+      }
+
+      const result = asObject(finalJob?.result);
+      const payloadSite = asObject(result?.site);
+      const payloadLocale = asObject(result?.locale);
+      const payloadOutreach = asObject(result?.outreachEmail);
+
+      const siteId = typeof payloadSite?.id === "string" ? payloadSite.id : undefined;
+      const siteUrl = typeof payloadSite?.previewUrl === "string" ? payloadSite.previewUrl : undefined;
+      const localeLanguage = typeof payloadLocale?.language === "string" ? payloadLocale.language : undefined;
+      const outreachEmailSubject = typeof payloadOutreach?.subject === "string" ? payloadOutreach.subject : undefined;
+      const outreachEmailBody = typeof payloadOutreach?.body === "string" ? payloadOutreach.body : undefined;
+
+      if (!siteId || !siteUrl) {
+        throw new Error("Generation did not complete in time. Re-run the same lead to continue.");
+      }
 
       setPlannedGenerations((previous) =>
         previous.map((item) =>

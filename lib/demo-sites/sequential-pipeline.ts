@@ -1842,3 +1842,265 @@ export async function runSequentialRedesignPipeline(params: {
     artifacts,
   };
 }
+
+export interface SequentialPipelineRuntimeState {
+  enriched?: EnrichedCommerceLead;
+  crawl?: Record<string, unknown>;
+  renderedDom?: Record<string, unknown>;
+  reconstructed?: Record<string, unknown>;
+  rawContent?: Record<string, unknown>;
+  rawImages?: Record<string, unknown>;
+  normalizedContent?: Record<string, unknown>;
+  selectedImages?: Record<string, unknown>;
+  brandProfile?: Record<string, unknown>;
+  sourceQuality?: Record<string, unknown>;
+  redesignPlan?: Record<string, unknown>;
+  completedContent?: Record<string, unknown>;
+  translatedContent?: Record<string, unknown>;
+  finalWebsite?: Record<string, unknown>;
+  aiReview?: Record<string, unknown>;
+  correctionPass?: Record<string, unknown>;
+  logs?: PipelineStageLog[];
+}
+
+function createPhaseStepRunner(logs: PipelineStageLog[]) {
+  return async function runStep<T>(
+    step: number,
+    key: string,
+    summary: string,
+    execute: () => Promise<T>,
+  ): Promise<T> {
+    const startedAt = new Date().toISOString();
+    try {
+      const result = await execute();
+      logs.push({
+        step,
+        key,
+        status: "completed",
+        startedAt,
+        completedAt: new Date().toISOString(),
+        summary,
+      });
+      return result;
+    } catch (error) {
+      logs.push({
+        step,
+        key,
+        status: "failed",
+        startedAt,
+        completedAt: new Date().toISOString(),
+        summary: `${summary} failed: ${error instanceof Error ? error.message : "unknown error"}`,
+      });
+      throw error;
+    }
+  };
+}
+
+export async function runSequentialRedesignPipelinePhase(params: {
+  phase: 1 | 2 | 3;
+  category: BusinessCategory;
+  style: DemoSiteStyle;
+  state?: SequentialPipelineRuntimeState;
+  enriched?: EnrichedCommerceLead;
+}): Promise<{ state: SequentialPipelineRuntimeState; content?: DemoSiteContent; artifacts?: SequentialPipelineArtifacts }> {
+  const state: SequentialPipelineRuntimeState = {
+    ...(params.state ?? {}),
+    logs: [...(params.state?.logs ?? [])],
+  };
+
+  if (!state.enriched) {
+    state.enriched = params.enriched;
+  }
+
+  const enriched = state.enriched;
+  if (!enriched) {
+    throw new Error("Missing enriched lead context for phased pipeline.");
+  }
+
+  const runStep = createPhaseStepRunner(state.logs as PipelineStageLog[]);
+
+  if (params.phase === 1) {
+    const crawl = await runStep(1, "crawl_result", "Source website crawl", () =>
+      crawlWebsitePages({ enriched, category: params.category }),
+    );
+
+    const renderedDom = await runStep(2, "rendered_dom", "Rendered DOM extraction", () =>
+      extractRenderedDom(crawl),
+    );
+
+    const reconstructed = await runStep(3, "reconstructed_source", "Semantic source reconstruction", () =>
+      reconstructSourceWebsiteHtml(renderedDom),
+    );
+
+    const rawContent = await runStep(4, "raw_content", "Raw content extraction", () =>
+      extractRawContent(reconstructed),
+    );
+
+    const rawImages = await runStep(5, "raw_images", "Raw image extraction", () => extractRawImages(renderedDom));
+
+    state.crawl = crawl as unknown as Record<string, unknown>;
+    state.renderedDom = renderedDom as unknown as Record<string, unknown>;
+    state.reconstructed = reconstructed as unknown as Record<string, unknown>;
+    state.rawContent = rawContent as unknown as Record<string, unknown>;
+    state.rawImages = rawImages as unknown as Record<string, unknown>;
+
+    return { state };
+  }
+
+  if (params.phase === 2) {
+    const reconstructed = state.reconstructed as unknown as ReconstructedSource | undefined;
+    const rawContent = state.rawContent as unknown as RawContentExtraction | undefined;
+    const rawImages = state.rawImages as unknown as RawImageExtraction | undefined;
+    const renderedDom = state.renderedDom as unknown as RenderedDomResult | undefined;
+
+    if (!reconstructed || !rawContent || !rawImages || !renderedDom) {
+      throw new Error("Phase 2 requires steps 1-5 artifacts.");
+    }
+
+    const normalizedContent = await runStep(6, "normalized_content", "AI content mapping and classification", () =>
+      mapContentWithAI({
+        leadName: enriched.lead.businessName,
+        rawContent,
+        reconstructed,
+      }),
+    );
+
+    const selectedImages = await runStep(7, "selected_images", "AI image selection and classification", () =>
+      classifyImagesWithAI({ rawImages, category: params.category }),
+    );
+
+    const brandProfile = await runStep(8, "brand_profile", "AI brand analysis", () =>
+      analyzeBrandWithAI({
+        reconstructed,
+        normalizedContent,
+        selectedImages,
+        renderedDom,
+      }),
+    );
+
+    const sourceQuality = await runStep(9, "source_quality_score", "AI source quality scoring", () =>
+      scoreSourceQualityWithAI({
+        normalizedContent,
+        selectedImages,
+        brandProfile,
+      }),
+    );
+
+    const redesignPlan = await runStep(10, "redesign_plan", "Adaptive redesign strategy generation", () =>
+      buildRedesignPlanWithAI({
+        normalizedContent,
+        selectedImages,
+        brandProfile,
+        sourceQuality,
+        category: params.category,
+      }),
+    );
+
+    state.normalizedContent = normalizedContent as unknown as Record<string, unknown>;
+    state.selectedImages = selectedImages as unknown as Record<string, unknown>;
+    state.brandProfile = brandProfile as unknown as Record<string, unknown>;
+    state.sourceQuality = sourceQuality as unknown as Record<string, unknown>;
+    state.redesignPlan = redesignPlan as unknown as Record<string, unknown>;
+
+    return { state };
+  }
+
+  const reconstructed = state.reconstructed as unknown as ReconstructedSource | undefined;
+  const normalizedContent = state.normalizedContent as unknown as NormalizedBusinessContent | undefined;
+  const selectedImages = state.selectedImages as unknown as SelectedImagesOutput | undefined;
+  const brandProfile = state.brandProfile as unknown as BrandProfile | undefined;
+  const sourceQuality = state.sourceQuality as unknown as SourceQualityScore | undefined;
+  const redesignPlan = state.redesignPlan as unknown as RedesignPlanStep | undefined;
+
+  if (!reconstructed || !normalizedContent || !selectedImages || !brandProfile || !sourceQuality || !redesignPlan) {
+    throw new Error("Phase 3 requires steps 1-10 artifacts.");
+  }
+
+  const completedContent = await runStep(11, "completed_content", "Content completion and fallback generation", () =>
+    completeMissingContentWithAI({ normalizedContent, redesignPlan }),
+  );
+
+  const translatedContent = await runStep(12, "translated_content", "Translation generation", () =>
+    translateContentWithAI({
+      completedContent: completedContent.completedContent,
+      city: enriched.lead.city,
+      country: enriched.lead.country,
+    }),
+  );
+
+  const finalWebsite = await runStep(13, "final_render_data", "Final premium website generation", () =>
+    generateFinalWebsite({
+      lead: enriched.lead,
+      category: params.category,
+      style: params.style,
+      reconstructed,
+      completedContent,
+      selectedImages,
+      brandProfile,
+      qualityScore: sourceQuality,
+      redesignPlan,
+      translatedContent,
+    }),
+  );
+
+  const aiReview = await runStep(14, "ai_review", "AI review of generated website", () =>
+    reviewGeneratedWebsiteWithAI({
+      final: finalWebsite,
+      brandProfile,
+      redesignPlan,
+    }),
+  );
+
+  const correctionPass = await runStep(15, "correction_pass", "AI correction pass", () =>
+    refineGeneratedWebsiteWithAI({
+      final: finalWebsite,
+      review: aiReview,
+    }),
+  );
+
+  const finalPreviewOutput = await runStep(16, "final_preview_output", "Final preview output", async () => ({
+    previewReady: Boolean(correctionPass.correctedFinalContent.generatedHtmlPreview?.html),
+    locales: translatedContent.supportedLocales,
+    correctedAt: new Date().toISOString(),
+  }));
+
+  const artifacts: SequentialPipelineArtifacts = {
+    crawlResult: state.crawl,
+    renderedDom: state.renderedDom,
+    reconstructedSource: {
+      reconstructedHtml: reconstructed.reconstructedHtml,
+      structureSummary: reconstructed.structureSummary,
+      sourceBrandSignals: reconstructed.sourceBrandSignals,
+    },
+    rawContent: state.rawContent,
+    rawImages: state.rawImages,
+    normalizedContent: normalizedContent as unknown as Record<string, unknown>,
+    selectedImages: selectedImages as unknown as Record<string, unknown>,
+    brandProfile: brandProfile as unknown as Record<string, unknown>,
+    sourceQualityScore: sourceQuality as unknown as Record<string, unknown>,
+    redesignPlan: redesignPlan as unknown as Record<string, unknown>,
+    completedContent: completedContent as unknown as Record<string, unknown>,
+    translatedContent: translatedContent as unknown as Record<string, unknown>,
+    finalRenderData: finalWebsite as unknown as Record<string, unknown>,
+    aiReview: aiReview as unknown as Record<string, unknown>,
+    correctionPass: correctionPass as unknown as Record<string, unknown>,
+    pipelineRun: {
+      executedAt: new Date().toISOString(),
+      mode: "strict-sequential-phased",
+      stageLogs: state.logs,
+      finalPreviewOutput,
+    },
+  };
+
+  state.completedContent = completedContent as unknown as Record<string, unknown>;
+  state.translatedContent = translatedContent as unknown as Record<string, unknown>;
+  state.finalWebsite = finalWebsite as unknown as Record<string, unknown>;
+  state.aiReview = aiReview as unknown as Record<string, unknown>;
+  state.correctionPass = correctionPass as unknown as Record<string, unknown>;
+
+  return {
+    state,
+    content: correctionPass.correctedFinalContent,
+    artifacts,
+  };
+}
