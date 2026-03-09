@@ -23,7 +23,7 @@ import {
   extractSourceAssets,
   extractSourceBrandSignals,
   extractStructuredSourceContent,
-  generateRedesignedSiteFromSource,
+  generateRedesignedHtmlFromSource,
   reconstructSourceWebsiteHtml,
 } from "@/lib/demo-sites/source-redesign-pipeline";
 
@@ -448,18 +448,23 @@ export async function generateDemoSiteContentWithAI(params: {
 
   const lead = params.enriched.lead;
   const locale = params.enriched.locale ?? inferLocaleProfile(lead.country);
+  const hasRealSourceWebsite = Boolean(
+    lead.website && params.enriched.extractedWebsite?.pages && params.enriched.extractedWebsite.pages.length > 0,
+  );
 
   const extractedSiteProfile = analyzeSourceWebsiteIdentity(params.enriched);
   const redesignPlan = await createRedesignPlan(extractedSiteProfile);
-  const sourcePages = crawlWebsitePages(params.enriched);
-  const sourceReconstructedHtml = reconstructSourceWebsiteHtml({ pages: sourcePages });
-  const sourceStructureJson = buildSourceStructureJson({ pages: sourcePages });
-  const sourceContentJson = extractStructuredSourceContent({
-    enriched: params.enriched,
-    pages: sourcePages,
-  });
-  const sourceAssetsJson = extractSourceAssets(params.enriched);
-  const sourceBrandSignals = extractSourceBrandSignals(params.enriched);
+  const sourcePages = hasRealSourceWebsite ? crawlWebsitePages(params.enriched) : undefined;
+  const sourceReconstructedHtml = sourcePages ? reconstructSourceWebsiteHtml({ pages: sourcePages }) : undefined;
+  const sourceStructureJson = sourcePages ? buildSourceStructureJson({ pages: sourcePages }) : undefined;
+  const sourceContentJson = sourcePages
+    ? extractStructuredSourceContent({
+        enriched: params.enriched,
+        pages: sourcePages,
+      })
+    : undefined;
+  const sourceAssetsJson = hasRealSourceWebsite ? extractSourceAssets(params.enriched) : undefined;
+  const sourceBrandSignals = hasRealSourceWebsite ? extractSourceBrandSignals(params.enriched) : undefined;
 
   const sections = buildSectionsFromSource({
     enriched: params.enriched,
@@ -517,6 +522,14 @@ export async function generateDemoSiteContentWithAI(params: {
     adaptiveSiteJson,
   });
 
+  if (!hasRealSourceWebsite) {
+    return baseContent;
+  }
+
+  if (!sourceReconstructedHtml || !sourceStructureJson || !sourceContentJson || !sourceAssetsJson || !sourceBrandSignals) {
+    throw new Error("Source website reconstruction is incomplete.");
+  }
+
   const sourcePrompt = buildRedesignPromptFromSource({
     sourceReconstructedHtml,
     sourceStructureJson,
@@ -531,13 +544,14 @@ export async function generateDemoSiteContentWithAI(params: {
   });
 
   try {
-    const redesignedContent = await generateRedesignedSiteFromSource({
-      currentContent: baseContent,
-      prompt: sourcePrompt,
+    const generatedHtmlPreview = await generateRedesignedHtmlFromSource({
+      redesignPrompt: sourcePrompt,
+      businessName: lead.businessName,
+      languageLabel: locale.languageLabel,
     });
 
     const premiumContent = applyPremiumVisualLayer({
-      content: redesignedContent,
+      content: baseContent,
       redesignPlan,
     });
 
@@ -548,10 +562,13 @@ export async function generateDemoSiteContentWithAI(params: {
       sourceStructureJson,
       sourceContentJson,
       sourceAssetsJson,
+      generatedHtmlPreview,
       redesignPlan,
       adaptiveSiteJson: premiumContent.adaptiveSiteJson ?? adaptiveSiteJson,
     }));
-  } catch {
-    return baseContent;
+  } catch (error) {
+    throw new Error(
+      `Source-aware HTML generation failed: ${error instanceof Error ? error.message : "unknown error"}`,
+    );
   }
 }

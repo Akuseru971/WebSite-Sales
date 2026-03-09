@@ -178,6 +178,12 @@ export interface SourceAssetsJson {
   allImages: string[];
 }
 
+export interface GeneratedHtmlPreview {
+  html: string;
+  css?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface BusinessInfo {
   name: string;
   category: BusinessCategory;
@@ -386,6 +392,7 @@ export interface DemoSiteContent {
   sourceStructureJson?: SourceStructureJson;
   sourceContentJson?: SourceContentJson;
   sourceAssetsJson?: SourceAssetsJson;
+  generatedHtmlPreview?: GeneratedHtmlPreview;
   redesignPlan?: RedesignPlan;
   adaptiveSiteJson?: AdaptiveSiteComposition;
 }

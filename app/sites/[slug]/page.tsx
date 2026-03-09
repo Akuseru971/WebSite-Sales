@@ -39,7 +39,9 @@ export default async function SitePage({ params }: SitePageProps) {
 
   const decodedSite = {
     ...site,
-    generatedContent: deepDecodeHtmlEntities(site.generatedContent),
+    generatedContent: site.generatedContent.generatedHtmlPreview
+      ? site.generatedContent
+      : deepDecodeHtmlEntities(site.generatedContent),
   };
 
   return <DemoTemplateRenderer site={decodedSite} />;

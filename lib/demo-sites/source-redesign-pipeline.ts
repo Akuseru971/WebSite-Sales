@@ -1,5 +1,7 @@
+import OpenAI from "openai";
 import type {
   DemoSiteContent,
+  GeneratedHtmlPreview,
   RedesignPlan,
   SourceAssetsJson,
   SourceBrandSignals,
@@ -243,6 +245,92 @@ export function buildRedesignPromptFromSource(params: {
     "- Do not output generic template structure reused across businesses.",
     "- Keep schema valid.",
   ].join("\n");
+}
+
+function getOpenAIClient(): OpenAI {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    throw new Error("Missing OPENAI_API_KEY environment variable.");
+  }
+
+  return new OpenAI({ apiKey });
+}
+
+function stripUnsafeHtml(value: string): string {
+  return value
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
+    .replace(/javascript:/gi, "")
+    .trim();
+}
+
+function ensureHtmlBodyOnly(value: string): string {
+  const bodyMatch = value.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  if (bodyMatch?.[1]) {
+    return bodyMatch[1].trim();
+  }
+
+  return value.trim();
+}
+
+export async function generateRedesignedHtmlFromSource(params: {
+  redesignPrompt: string;
+  businessName: string;
+  languageLabel: string;
+}): Promise<GeneratedHtmlPreview> {
+  const openai = getOpenAIClient();
+  const response = await openai.responses.create({
+    model: "gpt-5.1-mini",
+    input: [
+      {
+        role: "system",
+        content: [
+          {
+            type: "input_text",
+            text:
+              "You are a premium web designer and frontend engineer. Output JSON only with keys: html, css, metadata. html must represent BODY content only (no html/head/body tags). Preserve source structure and authentic content where possible. Do not use scripts.",
+          },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text: [
+              `Business: ${params.businessName}`,
+              `Language: ${params.languageLabel}`,
+              "Goal: produce a finished premium redesigned website document derived from source reconstruction.",
+              "Return JSON object only.",
+              params.redesignPrompt,
+            ].join("\n\n"),
+          },
+        ],
+      },
+    ],
+    text: {
+      format: {
+        type: "json_object",
+      },
+    },
+  });
+
+  const outputText = response.output_text?.trim();
+  if (!outputText) {
+    throw new Error("OpenAI did not return HTML output.");
+  }
+
+  const parsed = JSON.parse(outputText) as { html?: string; css?: string; metadata?: Record<string, unknown> };
+  const rawHtml = parsed.html?.trim();
+  if (!rawHtml) {
+    throw new Error("OpenAI returned empty redesigned HTML.");
+  }
+
+  return {
+    html: stripUnsafeHtml(ensureHtmlBodyOnly(rawHtml)),
+    css: parsed.css ? stripUnsafeHtml(parsed.css) : undefined,
+    metadata: parsed.metadata,
+  };
 }
 
 export async function generateRedesignedSiteFromSource(params: {

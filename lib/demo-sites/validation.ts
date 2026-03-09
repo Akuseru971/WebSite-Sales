@@ -243,6 +243,13 @@ export const demoSiteContentSchema: z.ZodType<DemoSiteContent> = z.object({
       allImages: z.array(z.string().url()),
     })
     .optional(),
+  generatedHtmlPreview: z
+    .object({
+      html: z.string().min(1),
+      css: z.string().optional(),
+      metadata: z.record(z.string(), z.unknown()).optional(),
+    })
+    .optional(),
   extractedSiteProfile: z
     .object({
       sourceUrl: z.string().url(),

@@ -56,7 +56,7 @@ export function decodeHtmlEntities(input: string): string {
       }
     });
 
-  return numericDecoded.replace(/\s+/g, " ").trim();
+  return numericDecoded;
 }
 
 export function deepDecodeHtmlEntities<T>(value: T): T {
