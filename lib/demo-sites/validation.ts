@@ -604,7 +604,26 @@ export const demoSiteContentSchema: z.ZodType<DemoSiteContent> = z.object({
       }),
       extractedImages: z.array(z.object({
         url: z.string().url(),
-        role: z.enum(["logo", "hero", "food", "interior", "gallery", "team", "decorative", "unknown"]),
+        role: z.enum([
+          "logo",
+          "hero",
+          "food",
+          "menu_item",
+          "dining_room",
+          "interior",
+          "room",
+          "suite",
+          "bathroom",
+          "amenity",
+          "transport",
+          "vehicle",
+          "property_exterior",
+          "property_interior",
+          "gallery",
+          "team",
+          "decorative",
+          "unknown",
+        ]),
         width: z.number().int().min(1),
         height: z.number().int().min(1),
         sourcePage: z.string().url(),
@@ -731,7 +750,17 @@ function isLegacyContent(input: unknown): input is { siteTitle?: string; categor
   }
 
   const candidate = input as Record<string, unknown>;
-  return typeof candidate.siteTitle === "string" || Array.isArray(candidate.sections);
+  const hasModernShape =
+    typeof candidate.businessInfo === "object" ||
+    typeof candidate.theme === "object" ||
+    typeof candidate.contact === "object" ||
+    typeof candidate.seo === "object";
+
+  if (hasModernShape) {
+    return false;
+  }
+
+  return typeof candidate.siteTitle === "string" || typeof candidate.hero === "object";
 }
 
 function getDefaultStyleForCategory(category: DemoSiteContent["businessInfo"]["category"]): DemoSiteStyle {
