@@ -1683,7 +1683,6 @@ function buildRestaurantSemanticSections(input: {
 function auditRestaurantSemantics(input: {
   content: DemoSiteContent;
   expectedPrimaryLocale: RestaurantLocaleCode;
-  originalBusinessName: string;
 }): RestaurantSemanticAudit {
   const failedChecks: string[] = [];
   const restaurant = input.content.restaurantContent;
@@ -1691,8 +1690,16 @@ function auditRestaurantSemantics(input: {
     return { valid: false, failedChecks: ["missing_restaurant_content"] };
   }
 
-  if (!restaurant.restaurantName || restaurant.restaurantName.toLowerCase() !== input.originalBusinessName.toLowerCase()) {
+  if (!restaurant.restaurantName || !input.content.businessInfo.name) {
     failedChecks.push("restaurant_name_not_preserved");
+  }
+
+  if (
+    restaurant.restaurantName &&
+    input.content.businessInfo.name &&
+    restaurant.restaurantName.toLowerCase() !== input.content.businessInfo.name.toLowerCase()
+  ) {
+    failedChecks.push("restaurant_name_mismatch_between_layers");
   }
 
   if (!restaurant.reservation?.label && !restaurant.reservation?.url) {
@@ -1992,7 +1999,6 @@ export async function generateFinalWebsite(input: {
     let audit = auditRestaurantSemantics({
       content: restaurantContent,
       expectedPrimaryLocale: expectedLocale,
-      originalBusinessName: input.lead.businessName,
     });
 
     if (!audit.valid) {
@@ -2006,7 +2012,6 @@ export async function generateFinalWebsite(input: {
       audit = auditRestaurantSemantics({
         content: restaurantContent,
         expectedPrimaryLocale: expectedLocale,
-        originalBusinessName: input.lead.businessName,
       });
 
       if (!audit.valid) {
