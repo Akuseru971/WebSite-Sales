@@ -53,6 +53,19 @@ function uniqueStrings(values: string[], limit = 20): string[] {
   return output;
 }
 
+function asText(value: unknown, fallback: string): string {
+  if (typeof value === "string") {
+    const normalized = value.replace(/\s+/g, " ").trim();
+    return normalized || fallback;
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+
+  return fallback;
+}
+
 function createSection<TType extends DemoSection["type"]>(
   type: TType,
   order: number,
@@ -170,7 +183,7 @@ function buildSectionsFromSource(params: {
     .slice(0, 8)
     .map((description, index) => ({
       title: headings[index + 1] ?? `Service ${index + 1}`,
-      description,
+      description: asText(description, `${lead.businessName} service in ${lead.city}.`),
     }));
 
   const sectionFactory: Partial<Record<SectionType, () => DemoSection>> = {
@@ -191,8 +204,14 @@ function buildSectionsFromSource(params: {
       }),
     about: () =>
       createSection("about", 0, styleVariant, {
-        title: headings.find((heading) => /about|story|mission|team/i.test(heading)) ?? `About ${lead.businessName}`,
-        body: aboutBlocks[0] ?? enriched.inferredDescription ?? `${lead.businessName} serves ${lead.city}.`,
+        title: asText(
+          headings.find((heading) => /about|story|mission|team/i.test(heading)),
+          `About ${lead.businessName}`,
+        ),
+        body: asText(
+          aboutBlocks[0] ?? enriched.inferredDescription,
+          `${lead.businessName} serves ${lead.city}.`,
+        ),
         bullets: headings.slice(1, 5),
       }),
     services: () =>
@@ -247,7 +266,7 @@ function buildSectionsFromSource(params: {
     cta: () =>
       createSection("cta", 0, styleVariant, {
         title: `Ready to work with ${lead.businessName}?`,
-        body: plan.layoutDirection,
+        body: asText(plan.layoutDirection, "A premium redesign aligned with your source website identity."),
         action: {
           label: profile.contentIdentity.reservationWording[0] ?? "Contact us",
           href: "#contact",

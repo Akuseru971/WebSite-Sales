@@ -41,6 +41,15 @@ function uniqueStrings(values: string[], limit = 20): string[] {
   return output;
 }
 
+function asText(value: unknown, fallback: string): string {
+  if (typeof value === "string") {
+    const normalized = value.replace(/\s+/g, " ").trim();
+    return normalized || fallback;
+  }
+
+  return fallback;
+}
+
 function inferVisualMood(signals: SourceBrandSignals, structure: SourceStructureSummary): VisualMood {
   const bag = `${signals.visualTone ?? ""} ${signals.positioning ?? ""} ${structure.architectureType ?? ""}`.toLowerCase();
 
@@ -340,6 +349,13 @@ export async function createRedesignPlan(profile: ExtractedSiteProfile): Promise
       improveElements: parsed.improveElements?.length ? parsed.improveElements : fallback.improveElements,
       premiumUpgradeNotes: parsed.premiumUpgradeNotes?.length ? parsed.premiumUpgradeNotes : fallback.premiumUpgradeNotes,
       visualMood: (parsed.visualMood as VisualMood) ?? fallback.visualMood,
+      brandPositioning: asText(parsed.brandPositioning, fallback.brandPositioning),
+      toneOfVoice: asText(parsed.toneOfVoice, fallback.toneOfVoice),
+      originalStructureSummary: asText(parsed.originalStructureSummary, fallback.originalStructureSummary),
+      layoutDirection: asText(parsed.layoutDirection, fallback.layoutDirection),
+      imageStrategy: asText(parsed.imageStrategy, fallback.imageStrategy),
+      typographyDirection: asText(parsed.typographyDirection, fallback.typographyDirection),
+      ctaStyle: asText(parsed.ctaStyle, fallback.ctaStyle),
     };
   } catch {
     return fallbackRedesignPlan(profile);
