@@ -1,6 +1,7 @@
 import OpenAI from "openai";
 import type { DemoSiteContent } from "./types";
 import { validateDemoSiteContent } from "./validation";
+import { createResponseWithModelFallback } from "@/lib/openai/model-fallback";
 
 interface AiEditResult {
   suggestedContent: DemoSiteContent;
@@ -37,8 +38,7 @@ export async function updateDemoSiteJsonWithAI(input: {
   }
 
   const openai = getOpenAIClient();
-  const response = await openai.responses.create({
-    model: "gpt-5.1-mini",
+  const response = await createResponseWithModelFallback(openai, {
     input: [
       {
         role: "system",

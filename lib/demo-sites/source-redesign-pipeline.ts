@@ -11,6 +11,7 @@ import type {
 import type { EnrichedCommerceLead } from "@/lib/leads/enrichment";
 import { extractBrandDNA, generateAdaptiveDemoSiteJson } from "@/lib/demo-sites/redesign-intelligence";
 import { updateDemoSiteJsonWithAI } from "@/lib/demo-sites/ai-edit";
+import { createResponseWithModelFallback } from "@/lib/openai/model-fallback";
 
 function uniqueStrings(values: string[], limit = 50): string[] {
   const seen = new Set<string>();
@@ -279,8 +280,7 @@ export async function generateRedesignedHtmlFromSource(params: {
   languageLabel: string;
 }): Promise<GeneratedHtmlPreview> {
   const openai = getOpenAIClient();
-  const response = await openai.responses.create({
-    model: "gpt-5.1-mini",
+  const response = await createResponseWithModelFallback(openai, {
     input: [
       {
         role: "system",
