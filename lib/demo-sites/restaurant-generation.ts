@@ -338,7 +338,83 @@ export async function generateRestaurantDemoSiteContent(params: {
 
   const crawl = await crawlRestaurantWebsite(lead.website);
   if (!crawl) {
-    throw new Error("Restaurant crawl failed: no pages extracted from source website.");
+    const fallbackRestaurant = buildFallbackRestaurantContent(enriched);
+    const fallbackDiagnostics: RestaurantDiagnostics = {
+      extractedRawContent: {
+        pagesCrawled: [],
+        candidateNames: [lead.businessName],
+        aboutCandidates: fallbackRestaurant.aboutText ? [fallbackRestaurant.aboutText] : [],
+        menuSectionTitles: [],
+      },
+      extractedImages: [],
+      extractedBrandColors: [],
+      missingFields: ["playwright_browser_unavailable_or_crawl_failed", "menuSections"],
+      confidence: {
+        restaurantName: "medium",
+        colors: "none",
+        menu: "none",
+        heroImages: fallbackRestaurant.heroImages.length ? "medium" : "low",
+        gallery: fallbackRestaurant.galleryImages.length ? "medium" : "low",
+        contact: fallbackRestaurant.contact.phone || fallbackRestaurant.contact.email || fallbackRestaurant.contact.address ? "medium" : "low",
+      },
+    };
+
+    return validateDemoSiteContent({
+      businessInfo: {
+        name: fallbackRestaurant.restaurantName,
+        category: "restaurant",
+        city: lead.city,
+        country: lead.country ?? enriched.locale.country,
+        address: fallbackRestaurant.contact.address,
+        phone: fallbackRestaurant.contact.phone,
+        email: fallbackRestaurant.contact.email,
+        tagline: fallbackRestaurant.tagline,
+        shortDescription: fallbackRestaurant.shortDescription,
+      },
+      theme: {
+        primaryColor: fallbackRestaurant.brandColors.primary ?? "#231910",
+        secondaryColor: fallbackRestaurant.brandColors.secondary ?? "#f4eee6",
+        accentColor: fallbackRestaurant.brandColors.accent ?? "#b8833f",
+        backgroundStyle: "atmospheric",
+        headingFont: "Playfair Display",
+        bodyFont: "Manrope",
+        buttonVariant: "solid",
+        borderRadius: "soft",
+        tone: "luxury",
+      },
+      seo: {
+        metaTitle: `${fallbackRestaurant.restaurantName} | ${lead.city}`,
+        metaDescription: fallbackRestaurant.shortDescription ?? `${fallbackRestaurant.restaurantName} in ${lead.city}`,
+      },
+      contact: {
+        contactName: fallbackRestaurant.restaurantName,
+        email: fallbackRestaurant.contact.email,
+        phone: fallbackRestaurant.contact.phone,
+        bookingEnabled: true,
+        formEnabled: true,
+        openingHours: fallbackRestaurant.openingHours,
+      },
+      sections: [
+        {
+          id: "restaurant-hero-fallback-0",
+          type: "hero",
+          enabled: true,
+          order: 0,
+          content: {
+            badge: lead.city,
+            title: fallbackRestaurant.restaurantName,
+            subtitle: fallbackRestaurant.shortDescription ?? "A premium dining destination.",
+            primaryCta: {
+              label: "Contact",
+              href: "#contact",
+            },
+            image: fallbackRestaurant.heroImages[0] ?? fallbackRestaurant.galleryImages[0],
+          },
+        },
+      ],
+      restaurantContent: fallbackRestaurant,
+      restaurantDiagnostics: fallbackDiagnostics,
+    });
   }
 
   const name = pickRestaurantName(crawl, lead.businessName);

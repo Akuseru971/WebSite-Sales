@@ -1,4 +1,5 @@
 import { decodeHtmlEntities } from "@/lib/utils/html-entities";
+import type { Browser } from "playwright";
 
 export type RestaurantImageRole = "logo" | "hero" | "food" | "interior" | "gallery" | "team" | "decorative" | "unknown";
 
@@ -54,6 +55,33 @@ export interface RestaurantCrawlResult {
   sourceUrl: string;
   crawledAt: string;
   pages: RestaurantRawPage[];
+}
+
+interface EvaluatedRestaurantPage {
+  title: string;
+  metaTitle?: string;
+  ogTitle?: string;
+  description?: string;
+  logoAltCandidates: string[];
+  headerBrandCandidates: string[];
+  footerBrandCandidates: string[];
+  h1: string[];
+  headings: string[];
+  paragraphs: string[];
+  openingHours: string[];
+  contacts: {
+    phones: string[];
+    emails: string[];
+    addresses: string[];
+    whatsapps: string[];
+    reservationLinks: string[];
+  };
+  socialLinks: Array<{ platform: string; url: string }>;
+  menuSections: Array<{ title: string; items: Array<{ name: string; description?: string; price?: string }> }>;
+  menuPdfUrls: string[];
+  colors: string[];
+  images: Array<{ src: string; alt: string; width: number; height: number; y: number }>;
+  links: string[];
 }
 
 const RESTAURANT_PATH_HINTS = [
@@ -142,11 +170,16 @@ export async function crawlRestaurantWebsite(website: string, options?: { maxPag
   const maxPages = options?.maxPages ?? 7;
   const timeoutMs = options?.timeoutMs ?? 22000;
 
-  const { chromium } = await import("playwright");
-  const browser = await chromium.launch({
-    headless: true,
-    args: ["--no-sandbox", "--disable-dev-shm-usage"],
-  });
+  let browser: Browser | null = null;
+  try {
+    const { chromium } = await import("playwright");
+    browser = await chromium.launch({
+      headless: true,
+      args: ["--no-sandbox", "--disable-dev-shm-usage"],
+    });
+  } catch {
+    return null;
+  }
 
   const queue: string[] = [sourceUrl];
   const seededPaths = RESTAURANT_PATH_HINTS
@@ -201,7 +234,7 @@ export async function crawlRestaurantWebsite(website: string, options?: { maxPag
           await wait(120);
         });
 
-        const extracted = await page.evaluate(() => {
+        const extracted: EvaluatedRestaurantPage = await page.evaluate(() => {
           const normalize = (value: string): string => value.replace(/\s+/g, " ").trim();
           const visible = (element: Element): boolean => {
             const style = window.getComputedStyle(element as HTMLElement);
@@ -478,7 +511,9 @@ export async function crawlRestaurantWebsite(website: string, options?: { maxPag
       }
     }
   } finally {
-    await browser.close();
+    if (browser) {
+      await browser.close();
+    }
   }
 
   if (pages.length === 0) {
