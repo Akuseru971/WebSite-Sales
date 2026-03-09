@@ -2,6 +2,7 @@
 "use client";
 
 import { useState } from "react";
+import { useEffect } from "react";
 import type { DemoSiteRecord, RestaurantLocaleCode } from "@/lib/demo-sites/types";
 import { getSectionImages } from "@/lib/demo-sites/image-augmentation";
 
@@ -17,6 +18,30 @@ export function PremiumRestaurantTemplate({ site }: PremiumRestaurantTemplatePro
   const restaurant = site.generatedContent.restaurantContent;
   const defaultLocale = restaurant?.primaryLocale ?? "en";
   const [locale, setLocale] = useState<RestaurantLocaleCode>(defaultLocale);
+  const [scrollY, setScrollY] = useState(0);
+
+  useEffect(() => {
+    let ticking = false;
+
+    const onScroll = () => {
+      if (ticking) {
+        return;
+      }
+
+      ticking = true;
+      window.requestAnimationFrame(() => {
+        setScrollY(window.scrollY || 0);
+        ticking = false;
+      });
+    };
+
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+    };
+  }, []);
 
   if (!restaurant) {
     return null;
@@ -63,8 +88,20 @@ export function PremiumRestaurantTemplate({ site }: PremiumRestaurantTemplatePro
       }}
     >
       <section className="relative min-h-[88vh] overflow-hidden sm:min-h-[92vh]">
-        {heroImage ? <img src={heroImage} alt={restaurant.restaurantName} className="h-[88vh] w-full object-cover object-center sm:h-[92vh]" /> : <div className="h-[88vh] w-full bg-[color:var(--restaurant-primary)] sm:h-[92vh]" />}
+        {heroImage ? (
+          <img
+            src={heroImage}
+            alt={restaurant.restaurantName}
+            className="restaurant-hero-image h-[88vh] w-full object-cover object-center sm:h-[92vh]"
+            style={{ transform: `scale(1.08) translateY(${Math.min(scrollY * 0.12, 64)}px)` }}
+          />
+        ) : (
+          <div className="h-[88vh] w-full bg-[color:var(--restaurant-primary)] sm:h-[92vh]" />
+        )}
         <div className="restaurant-hero-overlay absolute inset-0" aria-hidden="true" />
+        <div className="restaurant-hero-orb restaurant-hero-orb-left" aria-hidden="true" />
+        <div className="restaurant-hero-orb restaurant-hero-orb-right" aria-hidden="true" />
+        <div className="restaurant-hero-grain absolute inset-0" aria-hidden="true" />
         <div className="absolute inset-x-0 top-0 z-20 mx-auto flex w-full max-w-7xl items-center justify-between px-6 pt-6 sm:px-8 lg:px-12">
           <p className="rounded-full border border-white/30 bg-white/10 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-white/90 backdrop-blur">
             {site.generatedContent.businessInfo.city}
@@ -93,7 +130,7 @@ export function PremiumRestaurantTemplate({ site }: PremiumRestaurantTemplatePro
         </div>
 
         <div className="absolute inset-0 z-10 mx-auto flex max-w-7xl flex-col justify-end px-6 pb-12 pt-24 sm:px-8 sm:pb-16 lg:px-12 lg:pb-20">
-          <div className="restaurant-fade-up max-w-4xl">
+          <div className="restaurant-fade-up max-w-4xl" style={{ transform: `translateY(${Math.min(scrollY * 0.06, 24)}px)` }}>
             <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-[color:var(--restaurant-accent)] sm:text-xs">Fine Dining Experience</p>
             <h1 className="mt-4 text-balance font-[var(--font-heading)] text-5xl leading-[0.9] text-white drop-shadow-[0_12px_28px_rgba(0,0,0,0.45)] sm:text-6xl lg:text-8xl">
               {restaurant.restaurantName}
@@ -189,7 +226,7 @@ export function PremiumRestaurantTemplate({ site }: PremiumRestaurantTemplatePro
                 <h3 className="font-[var(--font-heading)] text-2xl text-[color:var(--restaurant-primary)] sm:text-3xl">{section.title}</h3>
                 <div className="mt-5 space-y-3">
                   {section.items.slice(0, 8).map((item) => (
-                    <div key={`${section.title}-${item.name}`} className="border-b border-zinc-200/75 pb-3.5 last:border-b-0 last:pb-0">
+                    <div key={`${section.title}-${item.name}`} className="restaurant-menu-item border-b border-zinc-200/75 pb-3.5 last:border-b-0 last:pb-0">
                       <div className="flex items-start justify-between gap-3">
                         <p className="text-sm font-semibold text-zinc-900 sm:text-[15px]">{item.name}</p>
                         {item.price ? <p className="rounded-full bg-[color:var(--restaurant-accent)]/14 px-2.5 py-0.5 text-[11px] font-semibold text-[color:var(--restaurant-primary)] sm:text-xs">{item.price}</p> : null}
@@ -225,7 +262,7 @@ export function PremiumRestaurantTemplate({ site }: PremiumRestaurantTemplatePro
             {gallery.map((image, index) => (
               <div
                 key={`${image}-${index}`}
-                className={`restaurant-fade-up group relative overflow-hidden rounded-2xl ${
+                className={`restaurant-fade-up restaurant-gallery-card group relative overflow-hidden rounded-2xl ${
                   index % 5 === 0 ? "col-span-2 row-span-2" : index % 3 === 0 ? "row-span-2" : ""
                 }`}
                 style={{ animationDelay: `${index * 70}ms` }}
