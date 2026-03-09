@@ -187,6 +187,34 @@ export interface GeneratedHtmlPreview {
 export type ExtractionConfidenceLevel = "high" | "medium" | "low";
 export type MenuConfidenceLevel = ExtractionConfidenceLevel | "none";
 export type ColorConfidenceLevel = ExtractionConfidenceLevel | "none";
+export type RestaurantLocaleCode = "fr" | "en" | "pt" | "es" | "it" | "de" | "nl";
+
+export interface RestaurantVisualImage {
+  url: string;
+  role:
+    | "logo"
+    | "hero"
+    | "food"
+    | "menu_item"
+    | "dining_room"
+    | "interior"
+    | "room"
+    | "suite"
+    | "bathroom"
+    | "amenity"
+    | "transport"
+    | "vehicle"
+    | "property_exterior"
+    | "property_interior"
+    | "gallery"
+    | "team"
+    | "decorative"
+    | "unknown";
+  sourceType: "source" | "fallback";
+  sectionId: string;
+  origin: string;
+  altByLocale?: Partial<Record<RestaurantLocaleCode, string>>;
+}
 
 export interface RestaurantMenuItem {
   name: string;
@@ -209,8 +237,33 @@ export interface RestaurantSocialLink {
   url: string;
 }
 
+export interface RestaurantLocalizedContent {
+  tagline?: string;
+  shortDescription?: string;
+  aboutText?: string;
+  sectionLabels: {
+    about: string;
+    menu: string;
+    gallery: string;
+    testimonials: string;
+    reservation: string;
+    details: string;
+  };
+  cta: {
+    reserve: string;
+    contact: string;
+    viewMenu: string;
+    openFullMenu: string;
+  };
+  menuSections: RestaurantMenuSection[];
+  testimonialHeading?: string;
+  signatureHighlights: string[];
+}
+
 export interface RestaurantContent {
   restaurantName: string;
+  primaryLocale: RestaurantLocaleCode;
+  supportedLocales: RestaurantLocaleCode[];
   tagline?: string;
   shortDescription?: string;
   brandColors: {
@@ -239,6 +292,8 @@ export interface RestaurantContent {
   aboutText?: string;
   signatureHighlights: string[];
   socialLinks: RestaurantSocialLink[];
+  visualAssets: RestaurantVisualImage[];
+  translations: Partial<Record<RestaurantLocaleCode, RestaurantLocalizedContent>>;
   sourceUrl: string;
   extractionConfidence: {
     content: ExtractionConfidenceLevel;

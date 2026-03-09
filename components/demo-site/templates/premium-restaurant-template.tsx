@@ -1,5 +1,9 @@
 /* eslint-disable @next/next/no-img-element */
-import type { DemoSiteRecord } from "@/lib/demo-sites/types";
+"use client";
+
+import { useState } from "react";
+import type { DemoSiteRecord, RestaurantLocaleCode } from "@/lib/demo-sites/types";
+import { getSectionImages } from "@/lib/demo-sites/image-augmentation";
 
 interface PremiumRestaurantTemplateProps {
   site: DemoSiteRecord;
@@ -11,19 +15,39 @@ function firstNonEmpty(values: Array<string | undefined>): string | undefined {
 
 export function PremiumRestaurantTemplate({ site }: PremiumRestaurantTemplateProps) {
   const restaurant = site.generatedContent.restaurantContent;
+  const defaultLocale = restaurant?.primaryLocale ?? "en";
+  const [locale, setLocale] = useState<RestaurantLocaleCode>(defaultLocale);
+
   if (!restaurant) {
     return null;
   }
 
-  const heroImage = firstNonEmpty([restaurant.heroImages[0], restaurant.galleryImages[0]]);
-  const gallery = restaurant.galleryImages.slice(0, 8);
-  const menuSections = restaurant.menuSections.slice(0, 4);
+  const localized = restaurant.translations[locale] ?? restaurant.translations.en;
+
+  const heroImage = firstNonEmpty(
+    getSectionImages({ assets: restaurant.visualAssets, sectionId: "hero", preferredRoles: ["hero", "food", "dining_room", "interior"], limit: 4 }).map((image) => image.url),
+  ) ?? firstNonEmpty([restaurant.heroImages[0], restaurant.galleryImages[0]]);
+
+  const galleryUrls = getSectionImages({
+    assets: restaurant.visualAssets,
+    sectionId: "gallery",
+    preferredRoles: ["gallery", "food", "dining_room", "interior", "team"],
+    limit: 12,
+  }).map((image) => image.url);
+  const gallery = galleryUrls.length ? galleryUrls : restaurant.galleryImages.slice(0, 8);
+
+  const menuSections = (localized?.menuSections?.length ? localized.menuSections : restaurant.menuSections).slice(0, 4);
   const hasMenu = menuSections.length > 0;
   const primary = restaurant.brandColors.primary ?? "#1f130d";
   const secondary = restaurant.brandColors.secondary ?? "#f7efe6";
   const accent = restaurant.brandColors.accent ?? "#b8833f";
-  const signatureHighlights = restaurant.signatureHighlights.slice(0, 6);
+  const signatureHighlights = (localized?.signatureHighlights?.length ? localized.signatureHighlights : restaurant.signatureHighlights).slice(0, 6);
   const testimonials = restaurant.testimonials.slice(0, 4);
+  const sectionLabels = localized?.sectionLabels;
+  const cta = localized?.cta;
+  const detailsLabel = sectionLabels?.details ?? "Details";
+
+  const localeOptions = restaurant.supportedLocales;
 
   return (
     <main
@@ -41,11 +65,27 @@ export function PremiumRestaurantTemplate({ site }: PremiumRestaurantTemplatePro
           <p className="rounded-full border border-white/30 bg-white/10 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.2em] text-white/90 backdrop-blur">
             {site.generatedContent.businessInfo.city}
           </p>
-          {restaurant.reservation?.url ? (
-            <a href={restaurant.reservation.url} className="restaurant-ghost-btn text-xs sm:text-sm">
-              {restaurant.reservation.label ?? "Reserve"}
-            </a>
-          ) : null}
+          <div className="flex items-center gap-2">
+            <div className="rounded-full border border-white/30 bg-white/10 p-1 backdrop-blur">
+              {localeOptions.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setLocale(option)}
+                  className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] transition ${
+                    locale === option ? "bg-white text-zinc-900" : "text-white/85 hover:bg-white/15"
+                  }`}
+                >
+                  {option.toUpperCase()}
+                </button>
+              ))}
+            </div>
+            {restaurant.reservation?.url ? (
+              <a href={restaurant.reservation.url} className="restaurant-ghost-btn text-xs sm:text-sm">
+                {restaurant.reservation.label ?? cta?.reserve ?? "Reserve"}
+              </a>
+            ) : null}
+          </div>
         </div>
 
         <div className="absolute inset-0 z-10 mx-auto flex max-w-7xl flex-col justify-end px-6 pb-12 pt-24 sm:px-8 sm:pb-16 lg:px-12 lg:pb-20">
@@ -54,22 +94,22 @@ export function PremiumRestaurantTemplate({ site }: PremiumRestaurantTemplatePro
             <h1 className="mt-4 text-balance font-[var(--font-heading)] text-5xl leading-[0.9] text-white drop-shadow-[0_12px_28px_rgba(0,0,0,0.45)] sm:text-6xl lg:text-8xl">
               {restaurant.restaurantName}
             </h1>
-            {restaurant.tagline ? <p className="mt-5 max-w-2xl text-base font-medium leading-relaxed text-white/90 sm:text-lg">{restaurant.tagline}</p> : null}
-            {restaurant.shortDescription ? <p className="mt-4 max-w-2xl text-sm leading-relaxed text-zinc-200 sm:text-base">{restaurant.shortDescription}</p> : null}
+            {(localized?.tagline ?? restaurant.tagline) ? <p className="mt-5 max-w-2xl text-base font-medium leading-relaxed text-white/90 sm:text-lg">{localized?.tagline ?? restaurant.tagline}</p> : null}
+            {(localized?.shortDescription ?? restaurant.shortDescription) ? <p className="mt-4 max-w-2xl text-sm leading-relaxed text-zinc-200 sm:text-base">{localized?.shortDescription ?? restaurant.shortDescription}</p> : null}
           </div>
 
           <div className="restaurant-fade-up mt-8 flex flex-wrap gap-3 sm:mt-10">
             {restaurant.reservation?.url ? (
               <a href={restaurant.reservation.url} className="restaurant-cta-btn">
-                {restaurant.reservation.label ?? "Reserve a table"}
+                {restaurant.reservation.label ?? cta?.reserve ?? "Reserve a table"}
               </a>
             ) : (
               <a href="#contact" className="restaurant-cta-btn">
-                Contact us
+                {cta?.contact ?? "Contact us"}
               </a>
             )}
             <a href="#menu" className="restaurant-ghost-btn">
-              {hasMenu ? "View menu" : "Discover highlights"}
+              {hasMenu ? cta?.viewMenu ?? "View menu" : "Discover highlights"}
             </a>
           </div>
 
@@ -83,11 +123,11 @@ export function PremiumRestaurantTemplate({ site }: PremiumRestaurantTemplatePro
 
       <section className="mx-auto grid max-w-7xl gap-10 px-6 py-16 sm:px-8 lg:grid-cols-[1.15fr_0.85fr] lg:px-12 lg:py-24">
         <div className="restaurant-fade-up">
-          <p className="restaurant-kicker">About</p>
+          <p className="restaurant-kicker">{sectionLabels?.about ?? "About"}</p>
           <h2 className="mt-3 max-w-2xl font-[var(--font-heading)] text-4xl leading-[1.02] text-[color:var(--restaurant-primary)] sm:text-5xl">
             A culinary house shaped by atmosphere and precision
           </h2>
-          <p className="mt-6 max-w-2xl text-base leading-relaxed text-zinc-700 sm:text-lg">{restaurant.aboutText ?? restaurant.shortDescription ?? "Restaurant presentation unavailable from source."}</p>
+          <p className="mt-6 max-w-2xl text-base leading-relaxed text-zinc-700 sm:text-lg">{localized?.aboutText ?? restaurant.aboutText ?? localized?.shortDescription ?? restaurant.shortDescription ?? "Restaurant presentation unavailable from source."}</p>
           {signatureHighlights.length ? (
             <div className="mt-8 grid gap-2 sm:grid-cols-2">
               {signatureHighlights.map((highlight) => (
@@ -99,7 +139,7 @@ export function PremiumRestaurantTemplate({ site }: PremiumRestaurantTemplatePro
           ) : null}
         </div>
         <div className="restaurant-fade-up rounded-[1.8rem] border border-zinc-200/90 bg-white/90 p-6 shadow-[0_22px_65px_rgba(19,13,10,0.12)] backdrop-blur sm:p-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">Details</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-zinc-500">{detailsLabel}</p>
           <div className="mt-4 space-y-3 text-sm text-zinc-700 sm:text-[15px]">
             {restaurant.contact.phone ? <p><span className="font-semibold text-zinc-900">Phone:</span> {restaurant.contact.phone}</p> : null}
             {restaurant.contact.email ? <p><span className="font-semibold text-zinc-900">Email:</span> {restaurant.contact.email}</p> : null}
@@ -117,7 +157,7 @@ export function PremiumRestaurantTemplate({ site }: PremiumRestaurantTemplatePro
           </div>
           {restaurant.reservation?.url ? (
             <a href={restaurant.reservation.url} className="mt-6 inline-flex items-center rounded-full border border-[color:var(--restaurant-primary)] px-5 py-2.5 text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--restaurant-primary)] transition hover:bg-[color:var(--restaurant-primary)] hover:text-white">
-              Reserve now
+              {cta?.reserve ?? "Reserve now"}
             </a>
           ) : null}
         </div>
@@ -126,14 +166,14 @@ export function PremiumRestaurantTemplate({ site }: PremiumRestaurantTemplatePro
       <section id="menu" className="mx-auto max-w-7xl px-6 pb-16 sm:px-8 lg:px-12 lg:pb-24">
         <div className="restaurant-fade-up mb-10 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <p className="restaurant-kicker">Menu</p>
+            <p className="restaurant-kicker">{sectionLabels?.menu ?? "Menu"}</p>
             <h2 className="mt-3 font-[var(--font-heading)] text-4xl leading-tight text-[color:var(--restaurant-primary)] sm:text-5xl">
               {hasMenu ? "Selected menu sections" : "Signature highlights"}
             </h2>
           </div>
           {restaurant.menuPdfUrls[0] ? (
             <a href={restaurant.menuPdfUrls[0]} className="restaurant-ghost-dark-btn">
-              Open full menu
+              {cta?.openFullMenu ?? "Open full menu"}
             </a>
           ) : null}
         </div>
@@ -174,7 +214,7 @@ export function PremiumRestaurantTemplate({ site }: PremiumRestaurantTemplatePro
       {gallery.length ? (
         <section className="mx-auto max-w-7xl px-6 pb-16 sm:px-8 lg:px-12 lg:pb-24">
           <div className="restaurant-fade-up">
-            <p className="restaurant-kicker">Gallery</p>
+            <p className="restaurant-kicker">{sectionLabels?.gallery ?? "Gallery"}</p>
             <h2 className="mt-3 font-[var(--font-heading)] text-4xl leading-tight text-[color:var(--restaurant-primary)] sm:text-5xl">Atmosphere and dishes</h2>
           </div>
           <div className="mt-7 grid auto-rows-[11rem] grid-cols-2 gap-3 sm:auto-rows-[13rem] md:grid-cols-4 md:gap-4">
@@ -201,8 +241,8 @@ export function PremiumRestaurantTemplate({ site }: PremiumRestaurantTemplatePro
       {testimonials.length ? (
         <section className="mx-auto max-w-7xl px-6 pb-16 sm:px-8 lg:px-12 lg:pb-24">
           <div className="restaurant-fade-up">
-            <p className="restaurant-kicker">Testimonials</p>
-            <h2 className="mt-3 font-[var(--font-heading)] text-4xl leading-tight text-[color:var(--restaurant-primary)] sm:text-5xl">Guest impressions</h2>
+            <p className="restaurant-kicker">{sectionLabels?.testimonials ?? "Testimonials"}</p>
+            <h2 className="mt-3 font-[var(--font-heading)] text-4xl leading-tight text-[color:var(--restaurant-primary)] sm:text-5xl">{localized?.testimonialHeading ?? "Guest impressions"}</h2>
           </div>
           <div className="mt-7 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
             {testimonials.map((item, index) => (
@@ -219,20 +259,20 @@ export function PremiumRestaurantTemplate({ site }: PremiumRestaurantTemplatePro
         <div className="restaurant-fade-up relative overflow-hidden rounded-[2rem] bg-[color:var(--restaurant-primary)] p-8 text-white shadow-[0_35px_70px_rgba(20,12,8,0.38)] sm:p-10 lg:p-12">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_12%,rgba(255,255,255,0.18),transparent_34%),radial-gradient(circle_at_90%_85%,rgba(184,131,63,0.22),transparent_42%)]" aria-hidden="true" />
           <div className="relative">
-            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--restaurant-accent)]">Reservation</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--restaurant-accent)]">{sectionLabels?.reservation ?? "Reservation"}</p>
             <h2 className="mt-3 font-[var(--font-heading)] text-4xl leading-[1] sm:text-5xl">Book your table today</h2>
             <p className="mt-4 max-w-2xl text-sm leading-relaxed text-zinc-200 sm:text-base">
-            {restaurant.shortDescription ?? `Plan your next dinner at ${restaurant.restaurantName}.`}
+            {localized?.shortDescription ?? restaurant.shortDescription ?? `Plan your next dinner at ${restaurant.restaurantName}.`}
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
               {restaurant.reservation?.url ? (
                 <a href={restaurant.reservation.url} className="restaurant-cta-btn">
-                  {restaurant.reservation.label ?? "Reserve now"}
+                  {restaurant.reservation.label ?? cta?.reserve ?? "Reserve now"}
                 </a>
               ) : null}
               {restaurant.contact.phone ? (
                 <a href={`tel:${restaurant.contact.phone}`} className="restaurant-ghost-btn">
-                  Call {restaurant.contact.phone}
+                  {(cta?.contact ?? "Call")} {restaurant.contact.phone}
                 </a>
               ) : null}
             </div>

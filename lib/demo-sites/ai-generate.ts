@@ -27,6 +27,7 @@ import {
   reconstructSourceWebsiteHtml,
 } from "@/lib/demo-sites/source-redesign-pipeline";
 import { generateRestaurantDemoSiteContent } from "@/lib/demo-sites/restaurant-generation";
+import { augmentImagePoolForCategory } from "@/lib/demo-sites/image-augmentation";
 
 function uniqueStrings(values: string[], limit = 20): string[] {
   const seen = new Set<string>();
@@ -167,9 +168,14 @@ function buildSectionsFromSource(params: {
   const aboutBlocks = profile.contentIdentity.aboutText;
   const services = profile.contentIdentity.services;
   const menuItems = enriched.inferredMenuItems;
-  const images = profile.visualIdentity.galleryImages.length
-    ? profile.visualIdentity.galleryImages
-    : enriched.suggestedImages;
+  const images = augmentImagePoolForCategory({
+    category: lead.category,
+    sourceUrls: profile.visualIdentity.galleryImages.length
+      ? profile.visualIdentity.galleryImages
+      : enriched.suggestedImages,
+    minimumCount: 8,
+    sectionId: "adaptive",
+  });
 
   const contactAddress = profile.contentIdentity.contactDetails.addresses[0] ?? lead.address;
   const contactPhone = profile.contentIdentity.contactDetails.phones[0] ?? lead.phone;

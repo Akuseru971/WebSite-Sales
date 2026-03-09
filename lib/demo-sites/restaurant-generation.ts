@@ -1,8 +1,17 @@
-import type { DemoSiteContent, RestaurantContent, RestaurantDiagnostics } from "@/lib/demo-sites/types";
+import type { DemoSiteContent, RestaurantContent, RestaurantDiagnostics, RestaurantLocaleCode } from "@/lib/demo-sites/types";
 import type { EnrichedCommerceLead } from "@/lib/leads/enrichment";
 import { crawlRestaurantWebsite, type RestaurantCrawlResult, type RestaurantRawImage, type RestaurantRawMenuSection } from "@/lib/leads/extraction/restaurant-crawler";
 import { validateDemoSiteContent } from "@/lib/demo-sites/validation";
 import { inferLocaleProfile } from "@/lib/i18n/locale";
+import { buildSupportedLocales, resolvePrimaryLocale } from "@/lib/demo-sites/locale-resolution";
+import { generateRestaurantTranslations } from "@/lib/demo-sites/multilingual";
+import {
+  getFallbackImagesForSection,
+  getSectionImages,
+  mergeSourceAndFallbackImages,
+  type WebsiteImageRole,
+  type WebsiteVisualImage,
+} from "@/lib/demo-sites/image-augmentation";
 
 function uniqueStrings(values: string[], limit = 60): string[] {
   const seen = new Set<string>();
@@ -234,11 +243,120 @@ function socialLinks(crawl: RestaurantCrawlResult) {
   return serialized.map((entry) => JSON.parse(entry) as { platform: string; url: string });
 }
 
+function toWebsiteImageRole(role: RestaurantRawImage["role"]): WebsiteImageRole {
+  if (role === "food") return "food";
+  if (role === "hero") return "hero";
+  if (role === "interior") return "interior";
+  if (role === "team") return "team";
+  if (role === "logo") return "logo";
+  if (role === "decorative") return "decorative";
+  if (role === "gallery") return "gallery";
+  return "unknown";
+}
+
+function buildRestaurantVisualAssets(params: {
+  sourceImages: RestaurantRawImage[];
+  category: "restaurant";
+  localLocale: RestaurantLocaleCode;
+  restaurantName: string;
+}): { visualAssets: WebsiteVisualImage[]; heroImages: string[]; galleryImages: string[] } {
+  const sourceAssetsBase: WebsiteVisualImage[] = params.sourceImages.map((image) => ({
+    url: image.url,
+    role: toWebsiteImageRole(image.role),
+    sourceType: "source",
+    sectionId: "gallery",
+    origin: "source-crawl",
+    alt: image.alt,
+  }));
+
+  const sourceHero = sourceAssetsBase.filter((image) => ["hero", "food", "interior", "gallery"].includes(image.role));
+  const sourceMenu = sourceAssetsBase.filter((image) => ["food", "menu_item", "gallery"].includes(image.role));
+  const sourceGallery = sourceAssetsBase.filter((image) => image.role !== "logo" && image.role !== "decorative");
+
+  const heroAssets = mergeSourceAndFallbackImages({
+    sourceImages: sourceHero.map((image) => ({ ...image, sectionId: "hero" })),
+    fallbackImages: getFallbackImagesForSection({
+      category: params.category,
+      sectionId: "hero",
+      preferredRoles: ["hero", "food", "dining_room", "interior"],
+      limit: 6,
+    }),
+    minRequired: 2,
+    maxTotal: 4,
+  }).map((image) => ({
+    ...image,
+    altByLocale: {
+      [params.localLocale]: `${params.restaurantName} - image principale`,
+      en: `${params.restaurantName} - hero image`,
+    },
+  }));
+
+  const menuAssets = mergeSourceAndFallbackImages({
+    sourceImages: sourceMenu.map((image) => ({ ...image, sectionId: "menu" })),
+    fallbackImages: getFallbackImagesForSection({
+      category: params.category,
+      sectionId: "menu",
+      preferredRoles: ["menu_item", "food"],
+      limit: 8,
+    }),
+    minRequired: 3,
+    maxTotal: 8,
+  }).map((image) => ({
+    ...image,
+    altByLocale: {
+      [params.localLocale]: `${params.restaurantName} - menu`,
+      en: `${params.restaurantName} - menu image`,
+    },
+  }));
+
+  const galleryAssets = mergeSourceAndFallbackImages({
+    sourceImages: sourceGallery.map((image) => ({ ...image, sectionId: "gallery" })),
+    fallbackImages: getFallbackImagesForSection({
+      category: params.category,
+      sectionId: "gallery",
+      preferredRoles: ["gallery", "food", "dining_room", "interior", "team"],
+      limit: 16,
+    }),
+    minRequired: 8,
+    maxTotal: 16,
+  }).map((image) => ({
+    ...image,
+    altByLocale: {
+      [params.localLocale]: `${params.restaurantName} - galerie`,
+      en: `${params.restaurantName} - gallery`,
+    },
+  }));
+
+  const logoAsset = sourceAssetsBase.find((image) => image.role === "logo")
+    ? [{
+        ...sourceAssetsBase.find((image) => image.role === "logo")!,
+        sectionId: "brand",
+        altByLocale: {
+          [params.localLocale]: `${params.restaurantName} - logo`,
+          en: `${params.restaurantName} - logo`,
+        },
+      }]
+    : [];
+
+  const visualAssets = [...logoAsset, ...heroAssets, ...menuAssets, ...galleryAssets]
+    .filter((asset, index, array) => array.findIndex((candidate) => candidate.url === asset.url && candidate.sectionId === asset.sectionId) === index);
+
+  return {
+    visualAssets,
+    heroImages: getSectionImages({ assets: visualAssets, sectionId: "hero", preferredRoles: ["hero", "food", "interior"], limit: 4 }).map((item) => item.url),
+    galleryImages: getSectionImages({ assets: visualAssets, sectionId: "gallery", preferredRoles: ["gallery", "food", "interior", "team"], limit: 16 }).map((item) => item.url),
+  };
+}
+
 function buildFallbackRestaurantContent(enriched: EnrichedCommerceLead): RestaurantContent {
   const locale = enriched.locale ?? inferLocaleProfile(enriched.lead.country);
+  const primaryLocale = resolvePrimaryLocale(enriched.lead.city, enriched.lead.country);
+  const supportedLocales = buildSupportedLocales(primaryLocale);
 
   return {
     restaurantName: enriched.lead.businessName,
+    primaryLocale,
+    supportedLocales,
     tagline: enriched.lead.description,
     shortDescription: enriched.inferredDescription,
     brandColors: {
@@ -262,6 +380,8 @@ function buildFallbackRestaurantContent(enriched: EnrichedCommerceLead): Restaur
     aboutText: enriched.inferredDescription,
     signatureHighlights: enriched.inferredMenuItems.slice(0, 5),
     socialLinks: [],
+    visualAssets: [],
+    translations: {},
     sourceUrl: enriched.lead.website?.startsWith("http") ? enriched.lead.website : `https://${enriched.lead.website ?? locale.country}`,
     extractionConfidence: {
       content: "low",
@@ -277,9 +397,20 @@ export async function generateRestaurantDemoSiteContent(params: {
 }): Promise<DemoSiteContent> {
   const { enriched } = params;
   const lead = enriched.lead;
+  const primaryLocale = resolvePrimaryLocale(lead.city, lead.country) as RestaurantLocaleCode;
+  const supportedLocales = buildSupportedLocales(primaryLocale) as RestaurantLocaleCode[];
 
   if (!lead.website) {
-    const fallbackRestaurant = buildFallbackRestaurantContent(enriched);
+    const fallbackRestaurant = {
+      ...buildFallbackRestaurantContent(enriched),
+      primaryLocale,
+      supportedLocales,
+    };
+    fallbackRestaurant.translations = await generateRestaurantTranslations({
+      base: fallbackRestaurant,
+      primaryLocale,
+      supportedLocales,
+    });
     return validateDemoSiteContent({
       businessInfo: {
         name: fallbackRestaurant.restaurantName,
@@ -338,7 +469,16 @@ export async function generateRestaurantDemoSiteContent(params: {
 
   const crawl = await crawlRestaurantWebsite(lead.website);
   if (!crawl) {
-    const fallbackRestaurant = buildFallbackRestaurantContent(enriched);
+    const fallbackRestaurant = {
+      ...buildFallbackRestaurantContent(enriched),
+      primaryLocale,
+      supportedLocales,
+    };
+    fallbackRestaurant.translations = await generateRestaurantTranslations({
+      base: fallbackRestaurant,
+      primaryLocale,
+      supportedLocales,
+    });
     const fallbackDiagnostics: RestaurantDiagnostics = {
       extractedRawContent: {
         pagesCrawled: [],
@@ -433,8 +573,17 @@ export async function generateRestaurantDemoSiteContent(params: {
     6,
   ).map((text) => ({ text }));
 
+  const visualLayer = buildRestaurantVisualAssets({
+    sourceImages: imageSet.all,
+    category: "restaurant",
+    localLocale: primaryLocale,
+    restaurantName: name.value,
+  });
+
   const restaurantContent: RestaurantContent = {
     restaurantName: name.value,
+    primaryLocale,
+    supportedLocales,
     tagline: about.tagline,
     shortDescription: about.shortDescription,
     brandColors: {
@@ -443,8 +592,8 @@ export async function generateRestaurantDemoSiteContent(params: {
       accent: palette.accent,
     },
     logoUrl: imageSet.logoUrl,
-    heroImages: imageSet.heroImages,
-    galleryImages: imageSet.galleryImages,
+    heroImages: visualLayer.heroImages,
+    galleryImages: visualLayer.galleryImages,
     contact: contact.contact,
     openingHours: contact.openingHours.length ? contact.openingHours : undefined,
     reservation: contact.reservation,
@@ -455,6 +604,8 @@ export async function generateRestaurantDemoSiteContent(params: {
     aboutText: about.aboutText,
     signatureHighlights: about.signatureHighlights,
     socialLinks: socials,
+    visualAssets: visualLayer.visualAssets,
+    translations: {},
     sourceUrl: crawl.sourceUrl,
     extractionConfidence: {
       content: about.contentConfidence,
@@ -491,11 +642,17 @@ export async function generateRestaurantDemoSiteContent(params: {
       restaurantName: name.confidence,
       colors: palette.confidence,
       menu: menu.confidence,
-      heroImages: imageSet.confidenceHero,
-      gallery: imageSet.confidenceGallery,
+      heroImages: restaurantContent.heroImages.length >= 2 ? "high" : restaurantContent.heroImages.length ? "medium" : "low",
+      gallery: restaurantContent.galleryImages.length >= 8 ? "high" : restaurantContent.galleryImages.length >= 3 ? "medium" : "low",
       contact: contact.confidence,
     },
   };
+
+  restaurantContent.translations = await generateRestaurantTranslations({
+    base: restaurantContent,
+    primaryLocale,
+    supportedLocales,
+  });
 
   const primaryColor = restaurantContent.brandColors.primary ?? "#231910";
   const secondaryColor = restaurantContent.brandColors.secondary ?? "#f7efe6";

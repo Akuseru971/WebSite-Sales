@@ -253,6 +253,8 @@ export const demoSiteContentSchema: z.ZodType<DemoSiteContent> = z.object({
   restaurantContent: z
     .object({
       restaurantName: z.string().min(1),
+      primaryLocale: z.enum(["fr", "en", "pt", "es", "it", "de", "nl"]),
+      supportedLocales: z.array(z.enum(["fr", "en", "pt", "es", "it", "de", "nl"])).min(1),
       tagline: z.string().optional(),
       shortDescription: z.string().optional(),
       brandColors: z.object({
@@ -294,6 +296,258 @@ export const demoSiteContentSchema: z.ZodType<DemoSiteContent> = z.object({
         platform: z.string().min(1),
         url: z.string().url(),
       })),
+      visualAssets: z.array(
+        z.object({
+          url: z.string().url(),
+          role: z.enum([
+            "logo",
+            "hero",
+            "food",
+            "menu_item",
+            "dining_room",
+            "interior",
+            "room",
+            "suite",
+            "bathroom",
+            "amenity",
+            "transport",
+            "vehicle",
+            "property_exterior",
+            "property_interior",
+            "gallery",
+            "team",
+            "decorative",
+            "unknown",
+          ]),
+          sourceType: z.enum(["source", "fallback"]),
+          sectionId: z.string().min(1),
+          origin: z.string().min(1),
+          altByLocale: z
+            .object({
+              fr: z.string().optional(),
+              en: z.string().optional(),
+              pt: z.string().optional(),
+              es: z.string().optional(),
+              it: z.string().optional(),
+              de: z.string().optional(),
+            })
+            .optional(),
+        }),
+      ),
+      translations: z
+        .object({
+          fr: z
+            .object({
+              tagline: z.string().optional(),
+              shortDescription: z.string().optional(),
+              aboutText: z.string().optional(),
+              sectionLabels: z.object({
+                about: z.string(),
+                menu: z.string(),
+                gallery: z.string(),
+                testimonials: z.string(),
+                reservation: z.string(),
+                details: z.string(),
+              }),
+              cta: z.object({
+                reserve: z.string(),
+                contact: z.string(),
+                viewMenu: z.string(),
+                openFullMenu: z.string(),
+              }),
+              menuSections: z.array(
+                z.object({
+                  title: z.string().min(1),
+                  items: z.array(
+                    z.object({
+                      name: z.string().min(1),
+                      description: z.string().optional(),
+                      price: z.string().optional(),
+                    }),
+                  ),
+                }),
+              ),
+              testimonialHeading: z.string().optional(),
+              signatureHighlights: z.array(z.string()),
+            })
+            .optional(),
+          en: z
+            .object({
+              tagline: z.string().optional(),
+              shortDescription: z.string().optional(),
+              aboutText: z.string().optional(),
+              sectionLabels: z.object({
+                about: z.string(),
+                menu: z.string(),
+                gallery: z.string(),
+                testimonials: z.string(),
+                reservation: z.string(),
+                details: z.string(),
+              }),
+              cta: z.object({
+                reserve: z.string(),
+                contact: z.string(),
+                viewMenu: z.string(),
+                openFullMenu: z.string(),
+              }),
+              menuSections: z.array(
+                z.object({
+                  title: z.string().min(1),
+                  items: z.array(
+                    z.object({
+                      name: z.string().min(1),
+                      description: z.string().optional(),
+                      price: z.string().optional(),
+                    }),
+                  ),
+                }),
+              ),
+              testimonialHeading: z.string().optional(),
+              signatureHighlights: z.array(z.string()),
+            })
+            .optional(),
+          pt: z
+            .object({
+              tagline: z.string().optional(),
+              shortDescription: z.string().optional(),
+              aboutText: z.string().optional(),
+              sectionLabels: z.object({
+                about: z.string(),
+                menu: z.string(),
+                gallery: z.string(),
+                testimonials: z.string(),
+                reservation: z.string(),
+                details: z.string(),
+              }),
+              cta: z.object({
+                reserve: z.string(),
+                contact: z.string(),
+                viewMenu: z.string(),
+                openFullMenu: z.string(),
+              }),
+              menuSections: z.array(
+                z.object({
+                  title: z.string().min(1),
+                  items: z.array(
+                    z.object({
+                      name: z.string().min(1),
+                      description: z.string().optional(),
+                      price: z.string().optional(),
+                    }),
+                  ),
+                }),
+              ),
+              testimonialHeading: z.string().optional(),
+              signatureHighlights: z.array(z.string()),
+            })
+            .optional(),
+          es: z
+            .object({
+              tagline: z.string().optional(),
+              shortDescription: z.string().optional(),
+              aboutText: z.string().optional(),
+              sectionLabels: z.object({
+                about: z.string(),
+                menu: z.string(),
+                gallery: z.string(),
+                testimonials: z.string(),
+                reservation: z.string(),
+                details: z.string(),
+              }),
+              cta: z.object({
+                reserve: z.string(),
+                contact: z.string(),
+                viewMenu: z.string(),
+                openFullMenu: z.string(),
+              }),
+              menuSections: z.array(
+                z.object({
+                  title: z.string().min(1),
+                  items: z.array(
+                    z.object({
+                      name: z.string().min(1),
+                      description: z.string().optional(),
+                      price: z.string().optional(),
+                    }),
+                  ),
+                }),
+              ),
+              testimonialHeading: z.string().optional(),
+              signatureHighlights: z.array(z.string()),
+            })
+            .optional(),
+          it: z
+            .object({
+              tagline: z.string().optional(),
+              shortDescription: z.string().optional(),
+              aboutText: z.string().optional(),
+              sectionLabels: z.object({
+                about: z.string(),
+                menu: z.string(),
+                gallery: z.string(),
+                testimonials: z.string(),
+                reservation: z.string(),
+                details: z.string(),
+              }),
+              cta: z.object({
+                reserve: z.string(),
+                contact: z.string(),
+                viewMenu: z.string(),
+                openFullMenu: z.string(),
+              }),
+              menuSections: z.array(
+                z.object({
+                  title: z.string().min(1),
+                  items: z.array(
+                    z.object({
+                      name: z.string().min(1),
+                      description: z.string().optional(),
+                      price: z.string().optional(),
+                    }),
+                  ),
+                }),
+              ),
+              testimonialHeading: z.string().optional(),
+              signatureHighlights: z.array(z.string()),
+            })
+            .optional(),
+          de: z
+            .object({
+              tagline: z.string().optional(),
+              shortDescription: z.string().optional(),
+              aboutText: z.string().optional(),
+              sectionLabels: z.object({
+                about: z.string(),
+                menu: z.string(),
+                gallery: z.string(),
+                testimonials: z.string(),
+                reservation: z.string(),
+                details: z.string(),
+              }),
+              cta: z.object({
+                reserve: z.string(),
+                contact: z.string(),
+                viewMenu: z.string(),
+                openFullMenu: z.string(),
+              }),
+              menuSections: z.array(
+                z.object({
+                  title: z.string().min(1),
+                  items: z.array(
+                    z.object({
+                      name: z.string().min(1),
+                      description: z.string().optional(),
+                      price: z.string().optional(),
+                    }),
+                  ),
+                }),
+              ),
+              testimonialHeading: z.string().optional(),
+              signatureHighlights: z.array(z.string()),
+            })
+            .optional(),
+        })
+        .optional(),
       sourceUrl: z.string().url(),
       extractionConfidence: z.object({
         content: z.enum(["high", "medium", "low"]),
