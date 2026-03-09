@@ -544,6 +544,25 @@ export interface DemoSiteContent {
   adaptiveSiteJson?: AdaptiveSiteComposition;
 }
 
+export interface SequentialPipelineArtifacts {
+  crawlResult?: Record<string, unknown>;
+  renderedDom?: Record<string, unknown>;
+  reconstructedSource?: Record<string, unknown>;
+  rawContent?: Record<string, unknown>;
+  rawImages?: Record<string, unknown>;
+  normalizedContent?: Record<string, unknown>;
+  selectedImages?: Record<string, unknown>;
+  brandProfile?: Record<string, unknown>;
+  sourceQualityScore?: Record<string, unknown>;
+  redesignPlan?: Record<string, unknown>;
+  completedContent?: Record<string, unknown>;
+  translatedContent?: Record<string, unknown>;
+  finalRenderData?: Record<string, unknown>;
+  aiReview?: Record<string, unknown>;
+  correctionPass?: Record<string, unknown>;
+  pipelineRun?: Record<string, unknown>;
+}
+
 export interface DemoSiteRecord {
   id: string;
   leadId?: string;
@@ -566,6 +585,22 @@ export interface DemoSiteRecord {
   sourceContentJson?: SourceContentJson;
   sourceAssetsJson?: SourceAssetsJson;
   redesignedSiteJson?: DemoSiteContent;
+  crawlResultJson?: Record<string, unknown>;
+  renderedDomJson?: Record<string, unknown>;
+  reconstructedSourceJson?: Record<string, unknown>;
+  rawContentJson?: Record<string, unknown>;
+  rawImagesJson?: Record<string, unknown>;
+  normalizedContentJson?: Record<string, unknown>;
+  selectedImagesJson?: Record<string, unknown>;
+  brandProfileJson?: Record<string, unknown>;
+  sourceQualityScoreJson?: Record<string, unknown>;
+  redesignPlanStepJson?: Record<string, unknown>;
+  completedContentJson?: Record<string, unknown>;
+  translatedContentJson?: Record<string, unknown>;
+  finalRenderDataJson?: Record<string, unknown>;
+  aiReviewJson?: Record<string, unknown>;
+  correctionPassJson?: Record<string, unknown>;
+  pipelineRunJson?: Record<string, unknown>;
 }
 
 export interface DemoSiteVersion {

@@ -1,0 +1,1763 @@
+import OpenAI from "openai";
+import type {
+  AdaptiveSiteComposition,
+  BusinessCategory,
+  DemoSection,
+  DemoSiteContent,
+  DemoSiteStyle,
+  RedesignPlan,
+  SequentialPipelineArtifacts,
+  SourceAssetsJson,
+  SourceBrandSignals,
+  SourceContentJson,
+  SourceStructureJson,
+} from "@/lib/demo-sites/types";
+import type { EnrichedCommerceLead } from "@/lib/leads/enrichment";
+import { extractStructuredBusinessContent } from "@/lib/leads/extraction/playwright-extractor";
+import { inferLocaleProfile, type SupportedLanguage } from "@/lib/i18n/locale";
+import { createResponseWithModelFallback } from "@/lib/openai/model-fallback";
+import { buildSupportedLocales, resolvePrimaryLocale } from "@/lib/demo-sites/locale-resolution";
+import { validateDemoSiteContent } from "@/lib/demo-sites/validation";
+import { generateAdaptiveDemoSiteJson } from "@/lib/demo-sites/redesign-intelligence";
+import { generateRedesignedHtmlFromSource } from "@/lib/demo-sites/source-redesign-pipeline";
+
+export interface PipelineExecutionResult {
+  content: DemoSiteContent;
+  artifacts: SequentialPipelineArtifacts;
+}
+
+type StepStatus = "completed" | "failed";
+
+interface PipelineStageLog {
+  step: number;
+  key: string;
+  status: StepStatus;
+  startedAt: string;
+  completedAt: string;
+  summary: string;
+}
+
+interface CrawledPage {
+  url: string;
+  title: string;
+  description?: string;
+  links: string[];
+  headings: string[];
+  paragraphs: string[];
+  ctas: string[];
+  images: Array<{ url: string; alt: string; width: number; height: number }>;
+}
+
+interface CrawlResult {
+  sourceUrl: string;
+  pages: CrawledPage[];
+  discoveredLinks: string[];
+  metadata: {
+    category: BusinessCategory;
+    sameDomainOnly: boolean;
+    crawledAt: string;
+    maxPages: number;
+  };
+}
+
+interface RenderedDomPage {
+  url: string;
+  title: string;
+  metaDescription?: string;
+  ogTags: {
+    title?: string;
+    description?: string;
+    image?: string;
+  };
+  dom: string;
+  screenshotDataUrl?: string;
+  visibleContent: {
+    headings: string[];
+    paragraphs: string[];
+    buttons: string[];
+    navItems: string[];
+    footerText: string[];
+    ctas: string[];
+    images: Array<{ src: string; alt: string; width: number; height: number; y: number }>;
+  };
+}
+
+interface RenderedDomResult {
+  pages: RenderedDomPage[];
+  metadata: {
+    extractedAt: string;
+    usedPlaywright: boolean;
+  };
+}
+
+interface ReconstructedSource {
+  reconstructedHtml: string;
+  structureSummary: {
+    navItems: string[];
+    detectedSections: string[];
+    ctaInfo: string[];
+    contactInfo: {
+      phones: string[];
+      emails: string[];
+      addresses: string[];
+    };
+    footerInfo: string[];
+  };
+  sourceStructureJson: SourceStructureJson;
+  sourceContentJson: SourceContentJson;
+  sourceAssetsJson: SourceAssetsJson;
+  sourceBrandSignals: SourceBrandSignals;
+}
+
+interface RawContentExtraction {
+  rawContentBlocks: string[];
+  cleanedContentBlocks: string[];
+  fieldCandidates: Record<string, string[]>;
+  confidenceLevels: Record<string, "high" | "medium" | "low">;
+}
+
+interface RawImageExtraction {
+  images: Array<{
+    url: string;
+    alt: string;
+    width: number;
+    height: number;
+    pageUrl: string;
+    domPositionY: number;
+    visibilityHint: "high" | "medium" | "low";
+  }>;
+}
+
+interface NormalizedBusinessContent {
+  businessName: string;
+  tagline?: string;
+  shortDescription?: string;
+  aboutText?: string;
+  signatureHighlights: string[];
+  services: string[];
+  menuSections: Array<{ title: string; items: string[] }>;
+  rooms: string[];
+  amenities: string[];
+  testimonials: string[];
+  contact: {
+    phones: string[];
+    emails: string[];
+    addresses: string[];
+  };
+  openingHours: string[];
+  reservation: {
+    cta?: string;
+    links: string[];
+  };
+  socialLinks: string[];
+  mappingDiagnostics: Record<string, unknown>;
+  missingFields: string[];
+  confidenceScores: Record<string, number>;
+}
+
+type ImageRole =
+  | "logo"
+  | "hero"
+  | "gallery"
+  | "food"
+  | "room"
+  | "amenity"
+  | "interior"
+  | "exterior"
+  | "property"
+  | "vehicle"
+  | "team"
+  | "decorative"
+  | "unknown";
+
+interface SelectedImagesOutput {
+  selectedImages: Array<{ url: string; alt: string; role: ImageRole; qualityScore: number; pageUrl: string }>;
+  rejectedImages: Array<{ url: string; reason: string }>;
+  missingImageRoles: ImageRole[];
+}
+
+interface BrandProfile {
+  brandArchetype: string;
+  brandConfidence: number;
+  visualPersonality: string[];
+  conversionPosture: string;
+  premiumPotential: "high" | "medium" | "low";
+  toneRecommendation: string;
+  designDirection: string;
+  preserveRecommendations: string[];
+  improveRecommendations: string[];
+  extractedColors: string[];
+}
+
+interface SourceQualityScore {
+  score: number;
+  breakdown: Record<string, number>;
+  mode: "strategy_a" | "strategy_b" | "strategy_c";
+  reasoning: string;
+}
+
+interface RedesignPlanStep {
+  preserve: string[];
+  replace: string[];
+  rewrite: string[];
+  reorder: string[];
+  emphasize: string[];
+  hide: string[];
+  fallbackVisualNeeds: string[];
+  premiumDirection: string;
+  layoutStyle: string;
+  emotionalEffect: string;
+  suggestedSectionOrder: Array<DemoSection["type"]>;
+  conversionStrategy: string[];
+  mobilePriorities: string[];
+}
+
+interface CompletedContentOutput {
+  completedContent: NormalizedBusinessContent;
+  fallbackUsage: Record<string, string>;
+  missingCriticalFieldsWarnings: string[];
+}
+
+interface TranslatedContentOutput {
+  primaryLocale: SupportedLanguage;
+  supportedLocales: SupportedLanguage[];
+  localized: Record<string, Record<string, unknown>>;
+}
+
+interface FinalRenderDataOutput {
+  finalSiteStructure: {
+    sectionOrder: Array<DemoSection["type"]>;
+  };
+  finalRenderData: {
+    generatedHtmlPreview?: {
+      html: string;
+      css?: string;
+      metadata?: Record<string, unknown>;
+    };
+    adaptiveSiteJson: AdaptiveSiteComposition;
+    usedImageUrls: string[];
+    finalLocaleReadyContent: TranslatedContentOutput;
+  };
+  previewPageData: {
+    hasHtmlPreview: boolean;
+  };
+  content: DemoSiteContent;
+}
+
+interface AIReviewOutput {
+  reviewScore: number;
+  issues: Array<{ severity: "high" | "medium" | "low"; message: string; target: string }>;
+  improvements: string[];
+}
+
+interface CorrectionPassOutput {
+  correctedFinalContent: DemoSiteContent;
+  correctedRenderConfig: Record<string, unknown>;
+  correctionLog: string[];
+}
+
+function uniqueStrings(values: string[], limit = 60): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+
+  for (const value of values) {
+    const normalized = value.replace(/\s+/g, " ").trim();
+    if (!normalized) {
+      continue;
+    }
+
+    const key = normalized.toLowerCase();
+    if (seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    out.push(normalized);
+    if (out.length >= limit) {
+      break;
+    }
+  }
+
+  return out;
+}
+
+function getOpenAIClient(): OpenAI | null {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    return null;
+  }
+
+  return new OpenAI({ apiKey });
+}
+
+async function runAiJson<T>(params: {
+  systemPrompt: string;
+  userPrompt: string;
+  fallback: T;
+}): Promise<T> {
+  const openai = getOpenAIClient();
+  if (!openai) {
+    return params.fallback;
+  }
+
+  try {
+    const response = await createResponseWithModelFallback(openai, {
+      input: [
+        {
+          role: "system",
+          content: [{ type: "input_text", text: params.systemPrompt }],
+        },
+        {
+          role: "user",
+          content: [{ type: "input_text", text: params.userPrompt }],
+        },
+      ],
+      text: { format: { type: "json_object" } },
+    });
+
+    const output = response.output_text?.trim();
+    if (!output) {
+      return params.fallback;
+    }
+
+    return JSON.parse(output) as T;
+  } catch {
+    return params.fallback;
+  }
+}
+
+function inferImageRoleFromText(text: string): ImageRole {
+  const value = text.toLowerCase();
+  if (/logo|brand/.test(value)) return "logo";
+  if (/hero|header|cover/.test(value)) return "hero";
+  if (/food|dish|menu|plate|dessert|cocktail|wine/.test(value)) return "food";
+  if (/room|suite|bed/.test(value)) return "room";
+  if (/amenit|spa|pool|gym/.test(value)) return "amenity";
+  if (/interior|inside|dining/.test(value)) return "interior";
+  if (/exterior|outside|facade/.test(value)) return "exterior";
+  if (/property|listing|estate|apartment/.test(value)) return "property";
+  if (/vehicle|taxi|car/.test(value)) return "vehicle";
+  if (/team|staff|chef|driver/.test(value)) return "team";
+  if (/icon|badge|payment|social/.test(value)) return "decorative";
+  return "unknown";
+}
+
+function ensureUrl(input?: string): string | undefined {
+  if (!input) {
+    return undefined;
+  }
+
+  try {
+    const parsed = new URL(input);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return parsed.toString();
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function normalizeWebsiteUrl(raw?: string): string | undefined {
+  const value = (raw ?? "").trim();
+  if (!value) {
+    return undefined;
+  }
+
+  const direct = ensureUrl(value);
+  if (direct) {
+    return direct;
+  }
+
+  return ensureUrl(`https://${value}`);
+}
+
+function getCrawlPathHints(category: BusinessCategory): string[] {
+  const base = ["about", "contact", "gallery", "services", "reservation", "book"];
+  if (category === "restaurant") {
+    return [...base, "menu", "food"];
+  }
+  if (category === "hotel") {
+    return [...base, "rooms", "amenities"];
+  }
+  if (category === "real_estate") {
+    return [...base, "properties", "listings"];
+  }
+  return [...base, "fleet", "rides", "coverage"];
+}
+
+function scoreLink(url: string, hints: string[]): number {
+  const path = url.toLowerCase();
+  let score = 0;
+  hints.forEach((hint, index) => {
+    if (path.includes(hint)) {
+      score += hints.length - index;
+    }
+  });
+  if (path.split("/").filter(Boolean).length <= 3) {
+    score += 2;
+  }
+  if (/privacy|terms|cookie|legal|login|signup|cart|checkout|wp-admin/.test(path)) {
+    score -= 10;
+  }
+  return score;
+}
+
+function selectRelevantPages(pages: CrawledPage[], category: BusinessCategory, maxPages = 7): CrawledPage[] {
+  const hints = getCrawlPathHints(category);
+
+  return [...pages]
+    .sort((a, b) => scoreLink(b.url, hints) - scoreLink(a.url, hints))
+    .slice(0, maxPages);
+}
+
+export async function crawlWebsitePages(params: {
+  enriched: EnrichedCommerceLead;
+  category: BusinessCategory;
+}): Promise<CrawlResult> {
+  const sourceUrl = normalizeWebsiteUrl(params.enriched.lead.website);
+  const fromEnrichment = params.enriched.extractedWebsite;
+
+  if (!sourceUrl && !fromEnrichment) {
+    throw new Error("No source website available for crawl step.");
+  }
+
+  const extracted = fromEnrichment ?? (sourceUrl ? await extractStructuredBusinessContent(sourceUrl) : null);
+  if (!extracted || extracted.pages.length === 0) {
+    throw new Error("Website crawl returned no pages.");
+  }
+
+  const pages: CrawledPage[] = extracted.pages.map((page) => ({
+    url: page.url,
+    title: page.title,
+    description: page.description,
+    links: page.links,
+    headings: page.headings,
+    paragraphs: page.paragraphs,
+    ctas: page.ctaPhrases,
+    images: page.images.map((image) => ({
+      url: image.url,
+      alt: image.alt,
+      width: image.width,
+      height: image.height,
+    })),
+  }));
+
+  const filtered = selectRelevantPages(pages, params.category);
+  const discoveredLinks = uniqueStrings(filtered.flatMap((page) => page.links), 200);
+
+  return {
+    sourceUrl: extracted.sourceWebsite,
+    pages: filtered,
+    discoveredLinks,
+    metadata: {
+      category: params.category,
+      sameDomainOnly: true,
+      crawledAt: new Date().toISOString(),
+      maxPages: filtered.length,
+    },
+  };
+}
+
+export async function extractRenderedDom(input: CrawlResult): Promise<RenderedDomResult> {
+  const { chromium } = await import("playwright");
+  let browser: Awaited<ReturnType<typeof chromium.launch>> | null = null;
+
+  try {
+    browser = await chromium.launch({
+      headless: true,
+      args: ["--no-sandbox", "--disable-dev-shm-usage"],
+    });
+
+    const context = await browser.newContext({
+      viewport: { width: 1440, height: 900 },
+      javaScriptEnabled: true,
+      userAgent:
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    });
+
+    const pages: RenderedDomPage[] = [];
+
+    for (const crawled of input.pages) {
+      const page = await context.newPage();
+      try {
+        await page.goto(crawled.url, { waitUntil: "domcontentloaded", timeout: 20_000 });
+        try {
+          await page.waitForLoadState("networkidle", { timeout: 6_000 });
+        } catch {
+          // Some websites keep network open continuously.
+        }
+
+        await page.evaluate(async () => {
+          const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+          const viewport = window.innerHeight;
+          const maxHeight = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+          let y = 0;
+          while (y < maxHeight) {
+            window.scrollTo({ top: y, behavior: "auto" });
+            await wait(120);
+            y += Math.max(200, Math.floor(viewport * 0.75));
+          }
+          window.scrollTo({ top: 0, behavior: "auto" });
+          await wait(100);
+        });
+
+        const extracted = await page.evaluate(() => {
+          const normalize = (value: string): string => value.replace(/\s+/g, " ").trim();
+          const isVisible = (el: Element): boolean => {
+            const rect = el.getBoundingClientRect();
+            const style = window.getComputedStyle(el as HTMLElement);
+            return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+          };
+
+          const headings = Array.from(document.querySelectorAll("h1, h2, h3"))
+            .filter((el) => isVisible(el))
+            .map((el) => normalize(el.textContent || ""))
+            .filter((text) => text.length >= 2);
+
+          const paragraphs = Array.from(document.querySelectorAll("main p, article p, section p, li"))
+            .filter((el) => isVisible(el))
+            .map((el) => normalize(el.textContent || ""))
+            .filter((text) => text.length >= 25 && text.length <= 1200);
+
+          const buttons = Array.from(document.querySelectorAll("button, [role='button'], a"))
+            .filter((el) => isVisible(el))
+            .map((el) => normalize(el.textContent || ""))
+            .filter((text) => text.length >= 2 && text.length <= 120);
+
+          const navItems = Array.from(document.querySelectorAll("nav a, header a"))
+            .filter((el) => isVisible(el))
+            .map((el) => normalize(el.textContent || ""))
+            .filter((text) => text.length >= 2 && text.length <= 80);
+
+          const footerText = Array.from(document.querySelectorAll("footer p, footer li, footer a"))
+            .filter((el) => isVisible(el))
+            .map((el) => normalize(el.textContent || ""))
+            .filter((text) => text.length >= 3 && text.length <= 300);
+
+          const ctas = buttons.filter((text) => /(book|reserve|call|contact|get|quote|start|menu|visit|learn)/i.test(text));
+
+          const images = Array.from(document.querySelectorAll("img"))
+            .filter((el) => isVisible(el))
+            .map((img) => {
+              const image = img as HTMLImageElement;
+              const rect = image.getBoundingClientRect();
+              return {
+                src: image.currentSrc || image.src || "",
+                alt: normalize(image.alt || image.getAttribute("alt") || ""),
+                width: Math.round(rect.width || image.naturalWidth || 0),
+                height: Math.round(rect.height || image.naturalHeight || 0),
+                y: Math.round(rect.y),
+              };
+            })
+            .filter((img) => Boolean(img.src));
+
+          return {
+            title: normalize(document.title || ""),
+            metaDescription: normalize(document.querySelector('meta[name="description"]')?.getAttribute("content") || ""),
+            ogTitle: normalize(document.querySelector('meta[property="og:title"]')?.getAttribute("content") || ""),
+            ogDescription: normalize(document.querySelector('meta[property="og:description"]')?.getAttribute("content") || ""),
+            ogImage: normalize(document.querySelector('meta[property="og:image"]')?.getAttribute("content") || ""),
+            dom: document.documentElement.outerHTML,
+            headings,
+            paragraphs,
+            buttons,
+            navItems,
+            footerText,
+            ctas,
+            images,
+          };
+        });
+
+        let screenshotDataUrl: string | undefined;
+        try {
+          const buffer = await page.screenshot({ type: "jpeg", quality: 50, fullPage: false });
+          screenshotDataUrl = `data:image/jpeg;base64,${buffer.toString("base64")}`;
+        } catch {
+          screenshotDataUrl = undefined;
+        }
+
+        pages.push({
+          url: crawled.url,
+          title: extracted.title || crawled.title,
+          metaDescription: extracted.metaDescription || crawled.description,
+          ogTags: {
+            title: extracted.ogTitle || undefined,
+            description: extracted.ogDescription || undefined,
+            image: extracted.ogImage || undefined,
+          },
+          dom: extracted.dom,
+          screenshotDataUrl,
+          visibleContent: {
+            headings: uniqueStrings(extracted.headings, 40),
+            paragraphs: uniqueStrings(extracted.paragraphs, 200),
+            buttons: uniqueStrings(extracted.buttons, 40),
+            navItems: uniqueStrings(extracted.navItems, 30),
+            footerText: uniqueStrings(extracted.footerText, 40),
+            ctas: uniqueStrings(extracted.ctas, 20),
+            images: extracted.images,
+          },
+        });
+      } finally {
+        await page.close();
+      }
+    }
+
+    return {
+      pages,
+      metadata: {
+        extractedAt: new Date().toISOString(),
+        usedPlaywright: true,
+      },
+    };
+  } finally {
+    if (browser) {
+      await browser.close();
+    }
+  }
+}
+
+function stripScriptsAndJunk(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<!--([\s\S]*?)-->/g, "")
+    .replace(/<[^>]+class="[^"]*(cookie|consent|popup|modal|banner|tracking)[^"]*"[^>]*>[\s\S]*?<\/[^>]+>/gi, "")
+    .trim();
+}
+
+function extractContactsFromText(texts: string[]): { phones: string[]; emails: string[]; addresses: string[] } {
+  const merged = texts.join(" \n ");
+  const phones = uniqueStrings(merged.match(/\+?[0-9][0-9\s().-]{7,}/g) ?? [], 10);
+  const emails = uniqueStrings(merged.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) ?? [], 10);
+  const addresses = uniqueStrings(
+    texts.filter((line) => /street|st\.|avenue|ave\.|road|rd\.|boulevard|blvd|city|zip|postal|suite|plaza/i.test(line)),
+    10,
+  );
+
+  return { phones, emails, addresses };
+}
+
+export async function reconstructSourceWebsiteHtml(input: RenderedDomResult): Promise<ReconstructedSource> {
+  const navItems = uniqueStrings(input.pages.flatMap((page) => page.visibleContent.navItems), 20);
+  const detectedSections = uniqueStrings(
+    input.pages.flatMap((page) => page.visibleContent.headings.map((heading) => heading.toLowerCase())),
+    40,
+  );
+  const allParagraphs = uniqueStrings(input.pages.flatMap((page) => page.visibleContent.paragraphs), 260);
+  const ctaInfo = uniqueStrings(input.pages.flatMap((page) => page.visibleContent.ctas), 20);
+  const footerInfo = uniqueStrings(input.pages.flatMap((page) => page.visibleContent.footerText), 20);
+  const contactInfo = extractContactsFromText([...allParagraphs, ...footerInfo]);
+
+  const reconstructedChunks: string[] = ["<site>"];
+
+  input.pages.forEach((page, pageIndex) => {
+    reconstructedChunks.push(`  <page index="${pageIndex}" url="${page.url}">`);
+    reconstructedChunks.push(`    <title>${page.title}</title>`);
+    if (page.metaDescription) {
+      reconstructedChunks.push(`    <description>${page.metaDescription}</description>`);
+    }
+
+    page.visibleContent.headings.slice(0, 16).forEach((heading, headingIndex) => {
+      reconstructedChunks.push(`    <section order="${headingIndex}">`);
+      reconstructedChunks.push(`      <heading>${heading}</heading>`);
+      page.visibleContent.paragraphs.slice(headingIndex * 2, headingIndex * 2 + 2).forEach((paragraph) => {
+        reconstructedChunks.push(`      <paragraph>${paragraph}</paragraph>`);
+      });
+      page.visibleContent.ctas.slice(0, 3).forEach((cta) => {
+        reconstructedChunks.push(`      <button>${cta}</button>`);
+      });
+      page.visibleContent.images.slice(0, 4).forEach((image) => {
+        reconstructedChunks.push(`      <image src="${image.src}" alt="${image.alt || "image"}" />`);
+      });
+      reconstructedChunks.push("    </section>");
+    });
+
+    reconstructedChunks.push("  </page>");
+  });
+
+  reconstructedChunks.push("</site>");
+  const reconstructedHtml = stripScriptsAndJunk(reconstructedChunks.join("\n"));
+
+  const sourceStructureJson: SourceStructureJson = {
+    pages: input.pages.map((page) => ({
+      url: page.url,
+      title: page.title,
+      navItems: page.visibleContent.navItems.slice(0, 8),
+      sectionKeys: page.visibleContent.headings.slice(0, 12).map((heading) => heading.toLowerCase().slice(0, 40)),
+    })),
+    nodes: input.pages.flatMap((page, pageIndex) =>
+      page.visibleContent.headings.slice(0, 12).map((heading, headingIndex) => ({
+        pageUrl: page.url,
+        sectionKey: heading.toLowerCase().slice(0, 40),
+        heading,
+        paragraphs: page.visibleContent.paragraphs.slice(headingIndex * 2, headingIndex * 2 + 2),
+        ctas: page.visibleContent.ctas.slice(0, 3),
+        imageUrls: page.visibleContent.images.slice(0, 4).map((image) => image.src),
+        order: pageIndex * 100 + headingIndex,
+      })),
+    ),
+  };
+
+  const sourceContentJson: SourceContentJson = {
+    headings: uniqueStrings(input.pages.flatMap((page) => page.visibleContent.headings), 80),
+    paragraphs: allParagraphs,
+    ctas: ctaInfo,
+    services: uniqueStrings(allParagraphs.filter((line) => /service|offer|solution|package|menu|room|amenit/i.test(line)), 40),
+    menuItems: uniqueStrings(allParagraphs.filter((line) => /menu|dish|starter|dessert|pizza|pasta|cocktail|wine/i.test(line)), 40),
+    testimonials: uniqueStrings(allParagraphs.filter((line) => /review|testimonial|client|customer/i.test(line)), 24),
+    contacts: contactInfo,
+  };
+
+  const sourceAssetsJson: SourceAssetsJson = {
+    logoUrl: uniqueStrings(
+      input.pages.flatMap((page) => page.visibleContent.images.filter((image) => /logo|brand/i.test(image.alt)).map((image) => image.src)),
+      1,
+    )[0],
+    heroImages: uniqueStrings(
+      input.pages.flatMap((page) => page.visibleContent.images.filter((image) => image.width >= 900 && image.height >= 300).map((image) => image.src)),
+      10,
+    ),
+    galleryImages: uniqueStrings(input.pages.flatMap((page) => page.visibleContent.images.map((image) => image.src)), 40),
+    allImages: uniqueStrings(input.pages.flatMap((page) => page.visibleContent.images.map((image) => image.src)), 60),
+  };
+
+  const sourceBrandSignals: SourceBrandSignals = {
+    businessName: sourceContentJson.headings[0],
+    slogan: sourceContentJson.paragraphs[0],
+    visualTone: sourceContentJson.paragraphs.some((line) => /luxury|premium|exclusive/i.test(line)) ? "premium" : "practical",
+    toneOfVoice: sourceContentJson.ctas.some((line) => /book|reserve/i.test(line)) ? "conversion" : "informative",
+    ctaStyle: sourceContentJson.ctas[0],
+  };
+
+  return {
+    reconstructedHtml,
+    structureSummary: {
+      navItems,
+      detectedSections,
+      ctaInfo,
+      contactInfo,
+      footerInfo,
+    },
+    sourceStructureJson,
+    sourceContentJson,
+    sourceAssetsJson,
+    sourceBrandSignals,
+  };
+}
+
+export async function extractRawContent(input: ReconstructedSource): Promise<RawContentExtraction> {
+  const lines = input.sourceContentJson.paragraphs;
+  const headingCandidates = input.sourceContentJson.headings;
+
+  const fieldCandidates: Record<string, string[]> = {
+    businessName: headingCandidates.slice(0, 6),
+    about: lines.filter((line) => /about|story|mission|welcome/i.test(line)).slice(0, 12),
+    services: input.sourceContentJson.services.slice(0, 20),
+    menu: input.sourceContentJson.menuItems.slice(0, 20),
+    testimonials: input.sourceContentJson.testimonials.slice(0, 12),
+    contacts: [
+      ...input.sourceContentJson.contacts.phones,
+      ...input.sourceContentJson.contacts.emails,
+      ...input.sourceContentJson.contacts.addresses,
+    ],
+    reservationLinks: input.sourceContentJson.ctas.filter((value) => /reserve|book/i.test(value)).slice(0, 8),
+  };
+
+  const cleanedContentBlocks = uniqueStrings(
+    lines
+      .map((line) => line.replace(/[\u0000-\u001F]/g, "").trim())
+      .filter((line) => line.length >= 20),
+    220,
+  );
+
+  return {
+    rawContentBlocks: lines,
+    cleanedContentBlocks,
+    fieldCandidates,
+    confidenceLevels: {
+      businessName: fieldCandidates.businessName.length ? "high" : "low",
+      about: fieldCandidates.about.length >= 2 ? "high" : fieldCandidates.about.length === 1 ? "medium" : "low",
+      services: fieldCandidates.services.length >= 3 ? "high" : fieldCandidates.services.length ? "medium" : "low",
+      contact: fieldCandidates.contacts.length >= 2 ? "high" : fieldCandidates.contacts.length ? "medium" : "low",
+    },
+  };
+}
+
+export async function extractRawImages(input: RenderedDomResult): Promise<RawImageExtraction> {
+  const images = input.pages.flatMap((page) =>
+    page.visibleContent.images
+      .filter((image) => image.width >= 90 && image.height >= 90)
+      .filter((image) => !/icon|badge|payment|social|pixel/.test(`${image.alt} ${image.src}`.toLowerCase()))
+      .map((image) => ({
+        url: image.src,
+        alt: image.alt,
+        width: image.width,
+        height: image.height,
+        pageUrl: page.url,
+        domPositionY: image.y,
+        visibilityHint: image.width >= 500 && image.height >= 300 ? ("high" as const) : ("medium" as const),
+      })),
+  );
+
+  return {
+    images: images
+      .filter((image, index, arr) => arr.findIndex((candidate) => candidate.url === image.url) === index)
+      .slice(0, 120),
+  };
+}
+
+function heuristicNormalizedContent(input: {
+  leadName: string;
+  rawContent: RawContentExtraction;
+  reconstructed: ReconstructedSource;
+}): NormalizedBusinessContent {
+  const aboutText = input.rawContent.fieldCandidates.about[0] ?? input.rawContent.cleanedContentBlocks[0];
+
+  const businessName =
+    input.rawContent.fieldCandidates.businessName.find((value) => value.length >= 3 && value.length <= 80) ??
+    input.leadName;
+
+  const socialLinks = uniqueStrings(
+    input.reconstructed.sourceContentJson.paragraphs.filter((line) => /instagram|facebook|linkedin|tiktok|youtube|x\.com/i.test(line)),
+    10,
+  );
+
+  return {
+    businessName,
+    tagline: input.rawContent.fieldCandidates.about[0],
+    shortDescription: input.rawContent.cleanedContentBlocks[0],
+    aboutText,
+    signatureHighlights: uniqueStrings(input.reconstructed.sourceContentJson.headings.slice(1), 6),
+    services: uniqueStrings(input.rawContent.fieldCandidates.services, 12),
+    menuSections: [
+      {
+        title: "Highlights",
+        items: uniqueStrings(input.rawContent.fieldCandidates.menu, 8),
+      },
+    ].filter((section) => section.items.length > 0),
+    rooms: uniqueStrings(input.rawContent.cleanedContentBlocks.filter((line) => /room|suite/i.test(line)), 8),
+    amenities: uniqueStrings(input.rawContent.cleanedContentBlocks.filter((line) => /amenit|pool|spa|wifi|parking/i.test(line)), 10),
+    testimonials: uniqueStrings(input.rawContent.fieldCandidates.testimonials, 6),
+    contact: {
+      phones: uniqueStrings(input.reconstructed.structureSummary.contactInfo.phones, 6),
+      emails: uniqueStrings(input.reconstructed.structureSummary.contactInfo.emails, 6),
+      addresses: uniqueStrings(input.reconstructed.structureSummary.contactInfo.addresses, 6),
+    },
+    openingHours: uniqueStrings(
+      input.rawContent.cleanedContentBlocks.filter((line) => /mon|tue|wed|thu|fri|sat|sun|open|close|hour/i.test(line)),
+      10,
+    ),
+    reservation: {
+      cta: input.reconstructed.structureSummary.ctaInfo.find((cta) => /reserve|book|appointment/i.test(cta)),
+      links: [],
+    },
+    socialLinks,
+    mappingDiagnostics: {
+      sourceHeadings: input.reconstructed.sourceContentJson.headings.length,
+      sourceParagraphs: input.reconstructed.sourceContentJson.paragraphs.length,
+    },
+    missingFields: [],
+    confidenceScores: {
+      businessName: 0.75,
+      aboutText: aboutText ? 0.8 : 0.2,
+      services: Math.min(1, input.rawContent.fieldCandidates.services.length / 6),
+      contact: input.reconstructed.structureSummary.contactInfo.phones.length || input.reconstructed.structureSummary.contactInfo.emails.length ? 0.8 : 0.3,
+    },
+  };
+}
+
+export async function mapContentWithAI(input: {
+  leadName: string;
+  rawContent: RawContentExtraction;
+  reconstructed: ReconstructedSource;
+}): Promise<NormalizedBusinessContent> {
+  const fallback = heuristicNormalizedContent(input);
+
+  const aiResult = await runAiJson<Partial<NormalizedBusinessContent>>({
+    systemPrompt:
+      "You are a senior content strategist. Return strict JSON. Map extracted business content into normalized fields. Preserve facts and avoid generic filler.",
+    userPrompt: [
+      "Map and classify this raw extraction into normalized business JSON.",
+      "Do not invent critical facts. Include missingFields and confidenceScores.",
+      JSON.stringify({
+        leadName: input.leadName,
+        fieldCandidates: input.rawContent.fieldCandidates,
+        cleanedBlocks: input.rawContent.cleanedContentBlocks.slice(0, 120),
+        structureSummary: input.reconstructed.structureSummary,
+      }),
+    ].join("\n\n"),
+    fallback,
+  });
+
+  return {
+    ...fallback,
+    ...aiResult,
+    contact: {
+      ...fallback.contact,
+      ...(aiResult.contact ?? {}),
+      phones: uniqueStrings([...(fallback.contact.phones ?? []), ...((aiResult.contact?.phones as string[] | undefined) ?? [])], 10),
+      emails: uniqueStrings([...(fallback.contact.emails ?? []), ...((aiResult.contact?.emails as string[] | undefined) ?? [])], 10),
+      addresses: uniqueStrings([...(fallback.contact.addresses ?? []), ...((aiResult.contact?.addresses as string[] | undefined) ?? [])], 10),
+    },
+    signatureHighlights: uniqueStrings([...(fallback.signatureHighlights ?? []), ...((aiResult.signatureHighlights as string[] | undefined) ?? [])], 8),
+    services: uniqueStrings([...(fallback.services ?? []), ...((aiResult.services as string[] | undefined) ?? [])], 14),
+    testimonials: uniqueStrings([...(fallback.testimonials ?? []), ...((aiResult.testimonials as string[] | undefined) ?? [])], 8),
+    socialLinks: uniqueStrings([...(fallback.socialLinks ?? []), ...((aiResult.socialLinks as string[] | undefined) ?? [])], 10),
+    missingFields: Array.isArray(aiResult.missingFields) ? aiResult.missingFields : fallback.missingFields,
+    confidenceScores: {
+      ...fallback.confidenceScores,
+      ...(aiResult.confidenceScores ?? {}),
+    },
+    mappingDiagnostics: {
+      ...fallback.mappingDiagnostics,
+      ...(aiResult.mappingDiagnostics ?? {}),
+      pipelineStep: "mapContentWithAI",
+    },
+  };
+}
+
+export async function classifyImagesWithAI(input: {
+  rawImages: RawImageExtraction;
+  category: BusinessCategory;
+}): Promise<SelectedImagesOutput> {
+  const heuristic = input.rawImages.images.map((image) => {
+    const role = inferImageRoleFromText(`${image.alt} ${image.url}`);
+    const qualityScore = Math.min(100, Math.round((image.width * image.height) / 6000));
+    return {
+      url: image.url,
+      alt: image.alt,
+      role,
+      qualityScore,
+      pageUrl: image.pageUrl,
+    };
+  });
+
+  const fallback: SelectedImagesOutput = {
+    selectedImages: heuristic.filter((image) => image.role !== "decorative" && image.qualityScore >= 12).slice(0, 24),
+    rejectedImages: heuristic
+      .filter((image) => image.role === "decorative" || image.qualityScore < 12)
+      .map((image) => ({ url: image.url, reason: image.role === "decorative" ? "decorative" : "low_quality" }))
+      .slice(0, 40),
+    missingImageRoles: ["hero", "gallery", "logo"].filter(
+      (role) => !heuristic.some((image) => image.role === role),
+    ) as ImageRole[],
+  };
+
+  const aiResult = await runAiJson<Partial<SelectedImagesOutput>>({
+    systemPrompt:
+      "You are a visual director. Classify images by semantic role, reject weak assets, and return JSON with selectedImages, rejectedImages, missingImageRoles.",
+    userPrompt: JSON.stringify({ category: input.category, images: heuristic.slice(0, 80) }),
+    fallback,
+  });
+
+  return {
+    selectedImages: Array.isArray(aiResult.selectedImages)
+      ? (aiResult.selectedImages as SelectedImagesOutput["selectedImages"]).slice(0, 30)
+      : fallback.selectedImages,
+    rejectedImages: Array.isArray(aiResult.rejectedImages)
+      ? (aiResult.rejectedImages as SelectedImagesOutput["rejectedImages"]).slice(0, 60)
+      : fallback.rejectedImages,
+    missingImageRoles: Array.isArray(aiResult.missingImageRoles)
+      ? (aiResult.missingImageRoles as ImageRole[])
+      : fallback.missingImageRoles,
+  };
+}
+
+function extractColorsFromDom(dom: RenderedDomResult): string[] {
+  const rawColors = dom.pages.flatMap((page) => {
+    const matches = page.dom.match(/#[0-9a-fA-F]{6}|#[0-9a-fA-F]{3}/g) ?? [];
+    return matches.map((color) => color.toLowerCase());
+  });
+
+  return uniqueStrings(rawColors, 12);
+}
+
+export async function analyzeBrandWithAI(input: {
+  reconstructed: ReconstructedSource;
+  normalizedContent: NormalizedBusinessContent;
+  selectedImages: SelectedImagesOutput;
+  renderedDom: RenderedDomResult;
+}): Promise<BrandProfile> {
+  const extractedColors = extractColorsFromDom(input.renderedDom);
+  const fallback: BrandProfile = {
+    brandArchetype: input.normalizedContent.services.length >= 4 ? "premium-service" : "boutique",
+    brandConfidence: Math.max(0.35, Math.min(0.95, 0.4 + input.normalizedContent.services.length * 0.05)),
+    visualPersonality: ["modern", "clean", "conversion-ready"],
+    conversionPosture: input.reconstructed.structureSummary.ctaInfo.length ? "active" : "light",
+    premiumPotential: input.selectedImages.selectedImages.length >= 8 ? "high" : "medium",
+    toneRecommendation: "premium and authentic",
+    designDirection: "bold hierarchy with refined spacing",
+    preserveRecommendations: input.reconstructed.structureSummary.navItems.slice(0, 5),
+    improveRecommendations: ["hero clarity", "cta emphasis", "content density"],
+    extractedColors,
+  };
+
+  const aiResult = await runAiJson<Partial<BrandProfile>>({
+    systemPrompt:
+      "You are a brand strategist and design director. Analyze source DNA and return concise JSON brand profile for redesign decisions.",
+    userPrompt: JSON.stringify({
+      structureSummary: input.reconstructed.structureSummary,
+      normalizedContent: input.normalizedContent,
+      selectedImageStats: {
+        selected: input.selectedImages.selectedImages.length,
+        missingRoles: input.selectedImages.missingImageRoles,
+      },
+      extractedColors,
+    }),
+    fallback,
+  });
+
+  return {
+    ...fallback,
+    ...aiResult,
+    visualPersonality: Array.isArray(aiResult.visualPersonality)
+      ? uniqueStrings(aiResult.visualPersonality.map(String), 8)
+      : fallback.visualPersonality,
+    preserveRecommendations: Array.isArray(aiResult.preserveRecommendations)
+      ? uniqueStrings(aiResult.preserveRecommendations.map(String), 8)
+      : fallback.preserveRecommendations,
+    improveRecommendations: Array.isArray(aiResult.improveRecommendations)
+      ? uniqueStrings(aiResult.improveRecommendations.map(String), 8)
+      : fallback.improveRecommendations,
+    extractedColors,
+  };
+}
+
+export async function scoreSourceQualityWithAI(input: {
+  normalizedContent: NormalizedBusinessContent;
+  selectedImages: SelectedImagesOutput;
+  brandProfile: BrandProfile;
+}): Promise<SourceQualityScore> {
+  const breakdown = {
+    logoQuality: input.selectedImages.selectedImages.some((image) => image.role === "logo") ? 80 : 35,
+    imageQuality: Math.min(100, input.selectedImages.selectedImages.length * 7),
+    imageCompleteness: Math.max(30, 100 - input.selectedImages.missingImageRoles.length * 18),
+    contentRichness: Math.min(100, input.normalizedContent.services.length * 10 + input.normalizedContent.testimonials.length * 12),
+    structureClarity: input.normalizedContent.signatureHighlights.length >= 3 ? 80 : 55,
+    contactCompleteness: input.normalizedContent.contact.phones.length || input.normalizedContent.contact.emails.length ? 80 : 35,
+    brandCoherence: Math.round(input.brandProfile.brandConfidence * 100),
+  };
+
+  const baseline = Math.round(Object.values(breakdown).reduce((acc, value) => acc + value, 0) / Object.keys(breakdown).length);
+  const fallback: SourceQualityScore = {
+    score: baseline,
+    breakdown,
+    mode: baseline >= 75 ? "strategy_a" : baseline >= 50 ? "strategy_b" : "strategy_c",
+    reasoning: baseline >= 75 ? "Strong source material with good preservation potential." : baseline >= 50 ? "Mixed quality source; preserve identity and improve weak parts." : "Weak source; preserve key facts and apply premium fallback enhancements.",
+  };
+
+  const aiResult = await runAiJson<Partial<SourceQualityScore>>({
+    systemPrompt:
+      "You are a website quality auditor. Score source quality and choose mode among strategy_a, strategy_b, strategy_c. Return JSON.",
+    userPrompt: JSON.stringify({ breakdown, normalizedContent: input.normalizedContent, missingRoles: input.selectedImages.missingImageRoles }),
+    fallback,
+  });
+
+  return {
+    ...fallback,
+    ...aiResult,
+    score: typeof aiResult.score === "number" ? Math.max(0, Math.min(100, Math.round(aiResult.score))) : fallback.score,
+    breakdown: {
+      ...breakdown,
+      ...(aiResult.breakdown ?? {}),
+    },
+    mode: aiResult.mode === "strategy_a" || aiResult.mode === "strategy_b" || aiResult.mode === "strategy_c" ? aiResult.mode : fallback.mode,
+  };
+}
+
+export async function buildRedesignPlanWithAI(input: {
+  normalizedContent: NormalizedBusinessContent;
+  selectedImages: SelectedImagesOutput;
+  brandProfile: BrandProfile;
+  sourceQuality: SourceQualityScore;
+  category: BusinessCategory;
+}): Promise<RedesignPlanStep> {
+  const fallback: RedesignPlanStep = {
+    preserve: uniqueStrings([
+      input.normalizedContent.businessName,
+      ...(input.normalizedContent.signatureHighlights ?? []),
+      ...(input.brandProfile.preserveRecommendations ?? []),
+    ], 10),
+    replace: input.sourceQuality.mode === "strategy_c" ? ["weak hero visuals", "thin body copy"] : ["generic headings"],
+    rewrite: ["hero subtitle", "cta microcopy"],
+    reorder: ["hero", "about", "services", "gallery", "testimonials", "cta", "contact"],
+    emphasize: ["hero", "cta", "proof blocks"],
+    hide: ["low-value repetitive paragraphs"],
+    fallbackVisualNeeds: input.selectedImages.missingImageRoles,
+    premiumDirection: input.brandProfile.designDirection,
+    layoutStyle: input.category === "restaurant" ? "immersive editorial" : "conversion premium grid",
+    emotionalEffect: "trust, desirability, and clarity",
+    suggestedSectionOrder: ["hero", "about", "services", "gallery", "testimonials", "cta", "contact"],
+    conversionStrategy: ["single primary CTA", "sticky contact touchpoints", "trust proof near CTA"],
+    mobilePriorities: ["hero readability", "fast load", "thumb-friendly CTA"],
+  };
+
+  const aiResult = await runAiJson<Partial<RedesignPlanStep>>({
+    systemPrompt:
+      "You are a premium redesign strategist. Return a practical redesign plan JSON with preserve/replace/rewrite/reorder and conversion-first decisions.",
+    userPrompt: JSON.stringify(input),
+    fallback,
+  });
+
+  return {
+    ...fallback,
+    ...aiResult,
+    preserve: Array.isArray(aiResult.preserve) ? uniqueStrings(aiResult.preserve.map(String), 12) : fallback.preserve,
+    replace: Array.isArray(aiResult.replace) ? uniqueStrings(aiResult.replace.map(String), 12) : fallback.replace,
+    rewrite: Array.isArray(aiResult.rewrite) ? uniqueStrings(aiResult.rewrite.map(String), 12) : fallback.rewrite,
+    reorder: Array.isArray(aiResult.reorder) ? uniqueStrings(aiResult.reorder.map(String), 12) : fallback.reorder,
+    emphasize: Array.isArray(aiResult.emphasize) ? uniqueStrings(aiResult.emphasize.map(String), 8) : fallback.emphasize,
+    hide: Array.isArray(aiResult.hide) ? uniqueStrings(aiResult.hide.map(String), 8) : fallback.hide,
+    fallbackVisualNeeds: Array.isArray(aiResult.fallbackVisualNeeds)
+      ? (uniqueStrings(aiResult.fallbackVisualNeeds.map(String), 8) as ImageRole[])
+      : fallback.fallbackVisualNeeds,
+    suggestedSectionOrder: Array.isArray(aiResult.suggestedSectionOrder)
+      ? (aiResult.suggestedSectionOrder.filter((value): value is DemoSection["type"] => typeof value === "string") as DemoSection["type"][])
+      : fallback.suggestedSectionOrder,
+    conversionStrategy: Array.isArray(aiResult.conversionStrategy)
+      ? uniqueStrings(aiResult.conversionStrategy.map(String), 8)
+      : fallback.conversionStrategy,
+    mobilePriorities: Array.isArray(aiResult.mobilePriorities)
+      ? uniqueStrings(aiResult.mobilePriorities.map(String), 8)
+      : fallback.mobilePriorities,
+  };
+}
+
+export async function completeMissingContentWithAI(input: {
+  normalizedContent: NormalizedBusinessContent;
+  redesignPlan: RedesignPlanStep;
+}): Promise<CompletedContentOutput> {
+  const fallbackUsage: Record<string, string> = {};
+  const completed: NormalizedBusinessContent = {
+    ...input.normalizedContent,
+    tagline: input.normalizedContent.tagline ?? `${input.normalizedContent.businessName} premium experience`,
+    shortDescription:
+      input.normalizedContent.shortDescription ??
+      input.normalizedContent.aboutText?.slice(0, 180) ??
+      `${input.normalizedContent.businessName} crafted solutions.`,
+    aboutText:
+      input.normalizedContent.aboutText ??
+      `${input.normalizedContent.businessName} is committed to quality, reliability, and premium service.`,
+    services:
+      input.normalizedContent.services.length > 0
+        ? input.normalizedContent.services
+        : ["Tailored service", "Personalized support", "Premium standards"],
+  } as NormalizedBusinessContent;
+
+  if (!input.normalizedContent.tagline) {
+    fallbackUsage.tagline = "generated";
+  }
+  if (!input.normalizedContent.shortDescription) {
+    fallbackUsage.shortDescription = "generated";
+  }
+  if (!input.normalizedContent.aboutText) {
+    fallbackUsage.aboutText = "generated";
+  }
+  if (input.normalizedContent.services.length === 0) {
+    fallbackUsage.services = "generated";
+  }
+
+  const warnings: string[] = [];
+  if (!completed.contact.phones.length && !completed.contact.emails.length) {
+    warnings.push("Critical: no direct contact channel extracted.");
+  }
+  if (completed.services.length < 2) {
+    warnings.push("Critical: very limited service inventory.");
+  }
+
+  const aiResult = await runAiJson<Partial<CompletedContentOutput>>({
+    systemPrompt:
+      "You complete missing non-critical content only. Keep extracted facts as priority. Return JSON with completedContent, fallbackUsage, missingCriticalFieldsWarnings.",
+    userPrompt: JSON.stringify({ normalizedContent: completed, redesignPlan: input.redesignPlan }),
+    fallback: {
+      completedContent: completed,
+      fallbackUsage,
+      missingCriticalFieldsWarnings: warnings,
+    },
+  });
+
+  return {
+    completedContent: {
+      ...completed,
+      ...(aiResult.completedContent ?? {}),
+      services: Array.isArray(aiResult.completedContent?.services)
+        ? uniqueStrings(aiResult.completedContent.services.map(String), 14)
+        : completed.services,
+      signatureHighlights: Array.isArray(aiResult.completedContent?.signatureHighlights)
+        ? uniqueStrings(aiResult.completedContent.signatureHighlights.map(String), 8)
+        : completed.signatureHighlights,
+    },
+    fallbackUsage: {
+      ...fallbackUsage,
+      ...(aiResult.fallbackUsage ?? {}),
+    },
+    missingCriticalFieldsWarnings: Array.isArray(aiResult.missingCriticalFieldsWarnings)
+      ? aiResult.missingCriticalFieldsWarnings.map(String)
+      : warnings,
+  };
+}
+
+export async function translateContentWithAI(input: {
+  completedContent: NormalizedBusinessContent;
+  city?: string;
+  country?: string;
+}): Promise<TranslatedContentOutput> {
+  const primaryLocale = resolvePrimaryLocale(input.city, input.country);
+  const supportedLocales = buildSupportedLocales(primaryLocale);
+
+  const fallbackLocalized: Record<string, Record<string, unknown>> = {
+    [primaryLocale]: {
+      businessName: input.completedContent.businessName,
+      tagline: input.completedContent.tagline,
+      shortDescription: input.completedContent.shortDescription,
+      aboutText: input.completedContent.aboutText,
+      services: input.completedContent.services,
+      cta: input.completedContent.reservation.cta ?? "Contact us",
+    },
+  };
+
+  if (!fallbackLocalized.en) {
+    fallbackLocalized.en = {
+      businessName: input.completedContent.businessName,
+      tagline: input.completedContent.tagline,
+      shortDescription: input.completedContent.shortDescription,
+      aboutText: input.completedContent.aboutText,
+      services: input.completedContent.services,
+      cta: "Contact us",
+    };
+  }
+
+  const aiResult = await runAiJson<Partial<TranslatedContentOutput>>({
+    systemPrompt:
+      "Translate naturally while preserving facts (names, prices, addresses). Return JSON with primaryLocale, supportedLocales, localized.",
+    userPrompt: JSON.stringify({
+      primaryLocale,
+      supportedLocales,
+      content: input.completedContent,
+    }),
+    fallback: {
+      primaryLocale,
+      supportedLocales,
+      localized: fallbackLocalized,
+    },
+  });
+
+  return {
+    primaryLocale,
+    supportedLocales,
+    localized: {
+      ...fallbackLocalized,
+      ...(aiResult.localized ?? {}),
+    },
+  };
+}
+
+function toThemeFromBrand(brand: BrandProfile): DemoSiteContent["theme"] {
+  const colors = brand.extractedColors;
+  return {
+    primaryColor: colors[0] ?? "#13151a",
+    secondaryColor: colors[1] ?? "#f4f2ed",
+    accentColor: colors[2] ?? "#b4874c",
+    backgroundStyle: "adaptive",
+    headingFont: "Playfair Display",
+    bodyFont: "Manrope",
+    buttonVariant: "solid",
+    borderRadius: "soft",
+    tone: brand.premiumPotential === "high" ? "luxury" : "premium",
+  };
+}
+
+function toRedesignPlanModel(input: { brand: BrandProfile; quality: SourceQualityScore; plan: RedesignPlanStep }): RedesignPlan {
+  return {
+    brandPositioning: input.brand.brandArchetype,
+    visualMood: input.brand.premiumPotential === "high" ? "immersive" : "editorial",
+    toneOfVoice: input.brand.toneRecommendation,
+    originalStructureSummary: input.quality.reasoning,
+    preserveElements: input.plan.preserve,
+    improveElements: input.plan.replace,
+    mergeElements: [],
+    simplifyElements: input.plan.hide,
+    elevateElements: input.plan.emphasize,
+    suggestedSectionOrder: input.plan.suggestedSectionOrder,
+    layoutDirection: input.plan.layoutStyle,
+    imageStrategy: input.plan.fallbackVisualNeeds.join(", "),
+    typographyDirection: input.brand.designDirection,
+    ctaStyle: input.plan.conversionStrategy[0] ?? "strong-primary",
+    premiumUpgradeNotes: input.plan.mobilePriorities,
+  };
+}
+
+function buildSectionsFromPipeline(input: {
+  content: NormalizedBusinessContent;
+  images: SelectedImagesOutput;
+  plan: RedesignPlanStep;
+}): DemoSection[] {
+  const heroImage = input.images.selectedImages.find((image) => image.role === "hero")?.url;
+  const galleryImages = input.images.selectedImages.filter((image) => ["gallery", "food", "interior", "exterior", "property"].includes(image.role)).slice(0, 10);
+
+  const sections: DemoSection[] = [
+    {
+      id: "hero-0",
+      type: "hero",
+      enabled: true,
+      order: 0,
+      styleVariant: "premium",
+      content: {
+        badge: input.content.signatureHighlights[0],
+        title: input.content.businessName,
+        subtitle: input.content.shortDescription ?? input.content.aboutText ?? "Premium website redesign",
+        primaryCta: { label: input.content.reservation.cta ?? "Contact us", href: "#contact" },
+        secondaryCta: { label: "Discover", href: "#about" },
+        image: heroImage,
+      },
+    },
+    {
+      id: "about-1",
+      type: "about",
+      enabled: true,
+      order: 1,
+      styleVariant: "premium",
+      content: {
+        title: "About",
+        body: input.content.aboutText ?? input.content.shortDescription ?? "",
+        bullets: input.content.signatureHighlights.slice(0, 4),
+      },
+    },
+    {
+      id: "services-2",
+      type: "services",
+      enabled: true,
+      order: 2,
+      styleVariant: "premium",
+      content: {
+        title: "Services",
+        subtitle: "What we deliver",
+        items: input.content.services.slice(0, 6).map((service, index) => ({
+          title: `Service ${index + 1}`,
+          description: service,
+        })),
+      },
+    },
+    {
+      id: "gallery-3",
+      type: "gallery",
+      enabled: true,
+      order: 3,
+      styleVariant: "premium",
+      content: {
+        title: "Gallery",
+        items: galleryImages.map((image, index) => ({ image: image.url, alt: image.alt || `image-${index + 1}` })),
+      },
+    },
+    {
+      id: "cta-4",
+      type: "cta",
+      enabled: true,
+      order: 4,
+      styleVariant: "premium",
+      content: {
+        title: "Ready to get started?",
+        body: "Connect with us for a personalized offer.",
+        action: { label: input.content.reservation.cta ?? "Contact us", href: "#contact" },
+      },
+    },
+    {
+      id: "contact-5",
+      type: "contact",
+      enabled: true,
+      order: 5,
+      styleVariant: "premium",
+      content: {
+        title: "Contact",
+        address: input.content.contact.addresses[0],
+        phone: input.content.contact.phones[0],
+        email: input.content.contact.emails[0],
+        hours: input.content.openingHours,
+      },
+    },
+  ];
+
+  const preferredOrder = input.plan.suggestedSectionOrder;
+  return sections
+    .sort((a, b) => {
+      const aIndex = preferredOrder.indexOf(a.type);
+      const bIndex = preferredOrder.indexOf(b.type);
+      return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
+    })
+    .map((section, index) => ({ ...section, id: `${section.type}-${index}`, order: index }));
+}
+
+export async function generateFinalWebsite(input: {
+  lead: EnrichedCommerceLead["lead"];
+  category: BusinessCategory;
+  style: DemoSiteStyle;
+  reconstructed: ReconstructedSource;
+  completedContent: CompletedContentOutput;
+  selectedImages: SelectedImagesOutput;
+  brandProfile: BrandProfile;
+  qualityScore: SourceQualityScore;
+  redesignPlan: RedesignPlanStep;
+  translatedContent: TranslatedContentOutput;
+}): Promise<FinalRenderDataOutput> {
+  const sections = buildSectionsFromPipeline({
+    content: input.completedContent.completedContent,
+    images: input.selectedImages,
+    plan: input.redesignPlan,
+  });
+
+  const redesignPlanModel = toRedesignPlanModel({
+    brand: input.brandProfile,
+    quality: input.qualityScore,
+    plan: input.redesignPlan,
+  });
+
+  const baseContent = validateDemoSiteContent({
+    businessInfo: {
+      name: input.completedContent.completedContent.businessName || input.lead.businessName,
+      category: input.category,
+      city: input.lead.city,
+      country: input.lead.country ?? inferLocaleProfile(input.lead.country).country,
+      address: input.completedContent.completedContent.contact.addresses[0] ?? input.lead.address,
+      phone: input.completedContent.completedContent.contact.phones[0] ?? input.lead.phone,
+      email: input.completedContent.completedContent.contact.emails[0] ?? input.lead.email,
+      tagline: input.completedContent.completedContent.tagline,
+      shortDescription: input.completedContent.completedContent.shortDescription,
+    },
+    theme: toThemeFromBrand(input.brandProfile),
+    seo: {
+      metaTitle: `${input.completedContent.completedContent.businessName} | ${input.lead.city}`,
+      metaDescription:
+        input.completedContent.completedContent.shortDescription ??
+        input.completedContent.completedContent.aboutText ??
+        `${input.lead.businessName} in ${input.lead.city}`,
+      ogTitle: `${input.completedContent.completedContent.businessName} - Premium Redesign`,
+      ogDescription:
+        input.completedContent.completedContent.shortDescription ??
+        input.completedContent.completedContent.aboutText ??
+        `${input.lead.businessName} in ${input.lead.city}`,
+    },
+    contact: {
+      contactName: input.completedContent.completedContent.businessName,
+      email: input.completedContent.completedContent.contact.emails[0] ?? input.lead.email,
+      phone: input.completedContent.completedContent.contact.phones[0] ?? input.lead.phone,
+      bookingEnabled: true,
+      formEnabled: true,
+      openingHours: input.completedContent.completedContent.openingHours,
+    },
+    sections,
+    sourceReconstructedHtml: input.reconstructed.reconstructedHtml,
+    sourceStructureJson: input.reconstructed.sourceStructureJson,
+    sourceContentJson: input.reconstructed.sourceContentJson,
+    sourceAssetsJson: input.reconstructed.sourceAssetsJson,
+    redesignPlan: redesignPlanModel,
+    adaptiveSiteJson: generateAdaptiveDemoSiteJson(redesignPlanModel, {
+      businessInfo: {
+        name: input.completedContent.completedContent.businessName || input.lead.businessName,
+        category: input.category,
+        city: input.lead.city,
+        country: input.lead.country ?? "",
+      },
+      theme: toThemeFromBrand(input.brandProfile),
+      seo: {
+        metaTitle: input.completedContent.completedContent.businessName,
+        metaDescription: input.completedContent.completedContent.shortDescription ?? "",
+      },
+      contact: { bookingEnabled: true, formEnabled: true },
+      sections,
+    }),
+  });
+
+  let htmlPreview: FinalRenderDataOutput["finalRenderData"]["generatedHtmlPreview"];
+  try {
+    const generated = await generateRedesignedHtmlFromSource({
+      redesignPrompt: [
+        "Create a premium website HTML using the provided structured redesign decisions.",
+        "Use real business data first. Avoid generic filler.",
+        JSON.stringify({
+          normalizedContent: input.completedContent.completedContent,
+          selectedImages: input.selectedImages.selectedImages.slice(0, 20),
+          brandProfile: input.brandProfile,
+          redesignPlan: input.redesignPlan,
+          translatedContent: input.translatedContent,
+        }, null, 2),
+      ].join("\n\n"),
+      businessName: input.completedContent.completedContent.businessName,
+      languageLabel: input.translatedContent.primaryLocale,
+    });
+
+    htmlPreview = generated;
+  } catch {
+    htmlPreview = undefined;
+  }
+
+  const finalized: DemoSiteContent = {
+    ...baseContent,
+    generatedHtmlPreview: htmlPreview,
+    adaptiveSiteJson: generateAdaptiveDemoSiteJson(redesignPlanModel, baseContent),
+  };
+
+  return {
+    finalSiteStructure: {
+      sectionOrder: sections.map((section) => section.type),
+    },
+    finalRenderData: {
+      generatedHtmlPreview: htmlPreview,
+      adaptiveSiteJson: finalized.adaptiveSiteJson as AdaptiveSiteComposition,
+      usedImageUrls: input.selectedImages.selectedImages.map((image) => image.url),
+      finalLocaleReadyContent: input.translatedContent,
+    },
+    previewPageData: {
+      hasHtmlPreview: Boolean(htmlPreview?.html),
+    },
+    content: finalized,
+  };
+}
+
+export async function reviewGeneratedWebsiteWithAI(input: {
+  final: FinalRenderDataOutput;
+  brandProfile: BrandProfile;
+  redesignPlan: RedesignPlanStep;
+}): Promise<AIReviewOutput> {
+  const fallback: AIReviewOutput = {
+    reviewScore: input.final.finalRenderData.generatedHtmlPreview?.html ? 82 : 70,
+    issues: [
+      ...(input.final.finalRenderData.generatedHtmlPreview?.html
+        ? []
+        : [{ severity: "medium" as const, message: "HTML preview missing; fallback renderer only.", target: "final_render" }]),
+      ...(input.final.content.sections.length < 5
+        ? [{ severity: "high" as const, message: "Too few sections for premium narrative flow.", target: "structure" }]
+        : []),
+    ],
+    improvements: ["strengthen hero CTA", "ensure visual rhythm on mobile"],
+  };
+
+  return runAiJson<AIReviewOutput>({
+    systemPrompt:
+      "You are a premium website QA reviewer. Return structured critique JSON: reviewScore, issues[{severity,message,target}], improvements.",
+    userPrompt: JSON.stringify({
+      sectionOrder: input.final.finalSiteStructure.sectionOrder,
+      hasHtmlPreview: input.final.previewPageData.hasHtmlPreview,
+      brandProfile: input.brandProfile,
+      redesignPlan: input.redesignPlan,
+    }),
+    fallback,
+  });
+}
+
+export async function refineGeneratedWebsiteWithAI(input: {
+  final: FinalRenderDataOutput;
+  review: AIReviewOutput;
+}): Promise<CorrectionPassOutput> {
+  const correctionLog: string[] = [];
+  const nextContent = JSON.parse(JSON.stringify(input.final.content)) as DemoSiteContent;
+
+  if (input.review.issues.some((issue) => issue.target === "structure")) {
+    const ctaIndex = nextContent.sections.findIndex((section) => section.type === "cta");
+    const contactIndex = nextContent.sections.findIndex((section) => section.type === "contact");
+    if (ctaIndex !== -1 && contactIndex !== -1 && ctaIndex > contactIndex) {
+      const [cta] = nextContent.sections.splice(ctaIndex, 1);
+      nextContent.sections.splice(contactIndex, 0, cta);
+      correctionLog.push("Moved CTA before contact to improve conversion flow.");
+    }
+  }
+
+  const heroSection = nextContent.sections.find((section) => section.type === "hero");
+  if (heroSection && heroSection.type === "hero") {
+    const previous = heroSection.content.primaryCta.label;
+    if (previous.length < 6 || /learn more|discover/i.test(previous)) {
+      heroSection.content.primaryCta.label = "Request your premium consultation";
+      correctionLog.push("Strengthened hero CTA wording.");
+    }
+  }
+
+  nextContent.sections = nextContent.sections
+    .sort((a, b) => a.order - b.order)
+    .map((section, index) => ({ ...section, order: index }));
+
+  return {
+    correctedFinalContent: validateDemoSiteContent(nextContent),
+    correctedRenderConfig: {
+      reviewScoreBeforeCorrection: input.review.reviewScore,
+      correctedAt: new Date().toISOString(),
+    },
+    correctionLog,
+  };
+}
+
+export async function runSequentialRedesignPipeline(params: {
+  enriched: EnrichedCommerceLead;
+  category: BusinessCategory;
+  style: DemoSiteStyle;
+}): Promise<PipelineExecutionResult> {
+  const logs: PipelineStageLog[] = [];
+
+  async function runStep<T>(
+    step: number,
+    key: string,
+    summary: string,
+    execute: () => Promise<T>,
+  ): Promise<T> {
+    const startedAt = new Date().toISOString();
+    try {
+      const result = await execute();
+      logs.push({
+        step,
+        key,
+        status: "completed",
+        startedAt,
+        completedAt: new Date().toISOString(),
+        summary,
+      });
+      return result;
+    } catch (error) {
+      logs.push({
+        step,
+        key,
+        status: "failed",
+        startedAt,
+        completedAt: new Date().toISOString(),
+        summary: `${summary} failed: ${error instanceof Error ? error.message : "unknown error"}`,
+      });
+      throw error;
+    }
+  }
+
+  const crawl = await runStep(1, "crawl_result", "Source website crawl", () =>
+    crawlWebsitePages({ enriched: params.enriched, category: params.category }),
+  );
+
+  const renderedDom = await runStep(2, "rendered_dom", "Rendered DOM extraction", () =>
+    extractRenderedDom(crawl),
+  );
+
+  const reconstructed = await runStep(3, "reconstructed_source", "Semantic source reconstruction", () =>
+    reconstructSourceWebsiteHtml(renderedDom),
+  );
+
+  const rawContent = await runStep(4, "raw_content", "Raw content extraction", () =>
+    extractRawContent(reconstructed),
+  );
+
+  const rawImages = await runStep(5, "raw_images", "Raw image extraction", () => extractRawImages(renderedDom));
+
+  const normalizedContent = await runStep(6, "normalized_content", "AI content mapping and classification", () =>
+    mapContentWithAI({
+      leadName: params.enriched.lead.businessName,
+      rawContent,
+      reconstructed,
+    }),
+  );
+
+  const selectedImages = await runStep(7, "selected_images", "AI image selection and classification", () =>
+    classifyImagesWithAI({ rawImages, category: params.category }),
+  );
+
+  const brandProfile = await runStep(8, "brand_profile", "AI brand analysis", () =>
+    analyzeBrandWithAI({
+      reconstructed,
+      normalizedContent,
+      selectedImages,
+      renderedDom,
+    }),
+  );
+
+  const sourceQuality = await runStep(9, "source_quality_score", "AI source quality scoring", () =>
+    scoreSourceQualityWithAI({
+      normalizedContent,
+      selectedImages,
+      brandProfile,
+    }),
+  );
+
+  const redesignPlan = await runStep(10, "redesign_plan", "Adaptive redesign strategy generation", () =>
+    buildRedesignPlanWithAI({
+      normalizedContent,
+      selectedImages,
+      brandProfile,
+      sourceQuality,
+      category: params.category,
+    }),
+  );
+
+  const completedContent = await runStep(11, "completed_content", "Content completion and fallback generation", () =>
+    completeMissingContentWithAI({ normalizedContent, redesignPlan }),
+  );
+
+  const translatedContent = await runStep(12, "translated_content", "Translation generation", () =>
+    translateContentWithAI({
+      completedContent: completedContent.completedContent,
+      city: params.enriched.lead.city,
+      country: params.enriched.lead.country,
+    }),
+  );
+
+  const finalWebsite = await runStep(13, "final_render_data", "Final premium website generation", () =>
+    generateFinalWebsite({
+      lead: params.enriched.lead,
+      category: params.category,
+      style: params.style,
+      reconstructed,
+      completedContent,
+      selectedImages,
+      brandProfile,
+      qualityScore: sourceQuality,
+      redesignPlan,
+      translatedContent,
+    }),
+  );
+
+  const aiReview = await runStep(14, "ai_review", "AI review of generated website", () =>
+    reviewGeneratedWebsiteWithAI({
+      final: finalWebsite,
+      brandProfile,
+      redesignPlan,
+    }),
+  );
+
+  const correctionPass = await runStep(15, "correction_pass", "AI correction pass", () =>
+    refineGeneratedWebsiteWithAI({
+      final: finalWebsite,
+      review: aiReview,
+    }),
+  );
+
+  const finalPreviewOutput = await runStep(16, "final_preview_output", "Final preview output", async () => ({
+    previewReady: Boolean(correctionPass.correctedFinalContent.generatedHtmlPreview?.html),
+    locales: translatedContent.supportedLocales,
+    correctedAt: new Date().toISOString(),
+  }));
+
+  const artifacts: SequentialPipelineArtifacts = {
+    crawlResult: crawl as unknown as Record<string, unknown>,
+    renderedDom: renderedDom as unknown as Record<string, unknown>,
+    reconstructedSource: {
+      reconstructedHtml: reconstructed.reconstructedHtml,
+      structureSummary: reconstructed.structureSummary,
+      sourceBrandSignals: reconstructed.sourceBrandSignals,
+    },
+    rawContent: rawContent as unknown as Record<string, unknown>,
+    rawImages: rawImages as unknown as Record<string, unknown>,
+    normalizedContent: normalizedContent as unknown as Record<string, unknown>,
+    selectedImages: selectedImages as unknown as Record<string, unknown>,
+    brandProfile: brandProfile as unknown as Record<string, unknown>,
+    sourceQualityScore: sourceQuality as unknown as Record<string, unknown>,
+    redesignPlan: redesignPlan as unknown as Record<string, unknown>,
+    completedContent: completedContent as unknown as Record<string, unknown>,
+    translatedContent: translatedContent as unknown as Record<string, unknown>,
+    finalRenderData: finalWebsite as unknown as Record<string, unknown>,
+    aiReview: aiReview as unknown as Record<string, unknown>,
+    correctionPass: correctionPass as unknown as Record<string, unknown>,
+    pipelineRun: {
+      executedAt: new Date().toISOString(),
+      mode: "strict-sequential",
+      stageLogs: logs,
+      finalPreviewOutput,
+    },
+  };
+
+  return {
+    content: correctionPass.correctedFinalContent,
+    artifacts,
+  };
+}

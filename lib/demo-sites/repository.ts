@@ -1,5 +1,11 @@
 import { SEEDED_DEMO_SITES } from "./defaults";
-import type { DemoSiteContent, DemoSiteRecord, DemoSiteVersion, SaveDemoSiteContentInput } from "./types";
+import type {
+  DemoSiteContent,
+  DemoSiteRecord,
+  DemoSiteVersion,
+  SaveDemoSiteContentInput,
+  SequentialPipelineArtifacts,
+} from "./types";
 import { normalizeDemoSiteContent, validateDemoSiteContent } from "./validation";
 import {
   createDemoSiteVersionRecord,
@@ -28,7 +34,48 @@ function toLegacyDemoSitePayload(payload: Record<string, unknown>): Record<strin
   delete legacy.source_content_json;
   delete legacy.source_assets_json;
   delete legacy.redesigned_site_json;
+  delete legacy.crawl_result;
+  delete legacy.rendered_dom;
+  delete legacy.reconstructed_source;
+  delete legacy.raw_content;
+  delete legacy.raw_images;
+  delete legacy.normalized_content;
+  delete legacy.selected_images;
+  delete legacy.brand_profile;
+  delete legacy.source_quality_score;
+  delete legacy.redesign_plan;
+  delete legacy.completed_content;
+  delete legacy.translated_content;
+  delete legacy.final_render_data;
+  delete legacy.ai_review;
+  delete legacy.correction_pass;
+  delete legacy.pipeline_run_json;
   return legacy;
+}
+
+function mapPipelineArtifactsToPayload(artifacts?: SequentialPipelineArtifacts): Record<string, unknown> {
+  if (!artifacts) {
+    return {};
+  }
+
+  return {
+    crawl_result: artifacts.crawlResult ?? null,
+    rendered_dom: artifacts.renderedDom ?? null,
+    reconstructed_source: artifacts.reconstructedSource ?? null,
+    raw_content: artifacts.rawContent ?? null,
+    raw_images: artifacts.rawImages ?? null,
+    normalized_content: artifacts.normalizedContent ?? null,
+    selected_images: artifacts.selectedImages ?? null,
+    brand_profile: artifacts.brandProfile ?? null,
+    source_quality_score: artifacts.sourceQualityScore ?? null,
+    redesign_plan: artifacts.redesignPlan ?? null,
+    completed_content: artifacts.completedContent ?? null,
+    translated_content: artifacts.translatedContent ?? null,
+    final_render_data: artifacts.finalRenderData ?? null,
+    ai_review: artifacts.aiReview ?? null,
+    correction_pass: artifacts.correctionPass ?? null,
+    pipeline_run_json: artifacts.pipelineRun ?? null,
+  };
 }
 
 function slugify(value: string): string {
@@ -87,6 +134,22 @@ function mapDbDemoSiteRow(row: Record<string, unknown>): DemoSiteRecord {
     sourceContentJson: (row.source_content_json as DemoSiteRecord["sourceContentJson"]) ?? normalized.sourceContentJson,
     sourceAssetsJson: (row.source_assets_json as DemoSiteRecord["sourceAssetsJson"]) ?? normalized.sourceAssetsJson,
     redesignedSiteJson: (row.redesigned_site_json as DemoSiteRecord["redesignedSiteJson"]) ?? normalized,
+    crawlResultJson: (row.crawl_result as DemoSiteRecord["crawlResultJson"]) ?? undefined,
+    renderedDomJson: (row.rendered_dom as DemoSiteRecord["renderedDomJson"]) ?? undefined,
+    reconstructedSourceJson: (row.reconstructed_source as DemoSiteRecord["reconstructedSourceJson"]) ?? undefined,
+    rawContentJson: (row.raw_content as DemoSiteRecord["rawContentJson"]) ?? undefined,
+    rawImagesJson: (row.raw_images as DemoSiteRecord["rawImagesJson"]) ?? undefined,
+    normalizedContentJson: (row.normalized_content as DemoSiteRecord["normalizedContentJson"]) ?? undefined,
+    selectedImagesJson: (row.selected_images as DemoSiteRecord["selectedImagesJson"]) ?? undefined,
+    brandProfileJson: (row.brand_profile as DemoSiteRecord["brandProfileJson"]) ?? undefined,
+    sourceQualityScoreJson: (row.source_quality_score as DemoSiteRecord["sourceQualityScoreJson"]) ?? undefined,
+    redesignPlanStepJson: (row.redesign_plan as DemoSiteRecord["redesignPlanStepJson"]) ?? undefined,
+    completedContentJson: (row.completed_content as DemoSiteRecord["completedContentJson"]) ?? undefined,
+    translatedContentJson: (row.translated_content as DemoSiteRecord["translatedContentJson"]) ?? undefined,
+    finalRenderDataJson: (row.final_render_data as DemoSiteRecord["finalRenderDataJson"]) ?? undefined,
+    aiReviewJson: (row.ai_review as DemoSiteRecord["aiReviewJson"]) ?? undefined,
+    correctionPassJson: (row.correction_pass as DemoSiteRecord["correctionPassJson"]) ?? undefined,
+    pipelineRunJson: (row.pipeline_run_json as DemoSiteRecord["pipelineRunJson"]) ?? undefined,
   };
 }
 
@@ -243,6 +306,7 @@ export async function createGeneratedDemoSite(params: {
   content: DemoSiteContent;
   templateType: DemoSiteRecord["templateType"];
   designStyle: DemoSiteRecord["designStyle"];
+  pipelineArtifacts?: SequentialPipelineArtifacts;
   actorUserId?: string;
   activityType?: string;
   changeNote?: string;
@@ -272,6 +336,7 @@ export async function createGeneratedDemoSite(params: {
     source_content_json: validatedContent.sourceContentJson ?? null,
     source_assets_json: validatedContent.sourceAssetsJson ?? null,
     redesigned_site_json: validatedContent,
+    ...mapPipelineArtifactsToPayload(params.pipelineArtifacts),
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   };

@@ -6,7 +6,7 @@ import type { DemoSection, DemoSiteContent, DemoSiteRecord, DemoSiteVersion } fr
 import { getHeroSection } from "@/lib/demo-sites/content";
 import { validateDemoSiteContent, getValidationErrorMessage } from "@/lib/demo-sites/validation";
 
-type EditorTab = "visual" | "json" | "ai" | "versions";
+type EditorTab = "visual" | "json" | "ai" | "versions" | "pipeline";
 
 interface DemoSiteEditorProps {
   site: DemoSiteRecord;
@@ -53,6 +53,28 @@ export function DemoSiteEditor({ site, initialVersions }: DemoSiteEditorProps) {
   const [aiSuggestedContent, setAiSuggestedContent] = useState<DemoSiteContent | null>(null);
 
   const isDirty = useMemo(() => !contentEquals(currentContent, draftContent), [currentContent, draftContent]);
+
+  const pipelineStages = useMemo(
+    () =>
+      [
+        { step: 1, key: "crawl_result", label: "Source website crawl", data: site.crawlResultJson },
+        { step: 2, key: "rendered_dom", label: "Rendered DOM extraction", data: site.renderedDomJson },
+        { step: 3, key: "reconstructed_source", label: "Semantic source reconstruction", data: site.reconstructedSourceJson },
+        { step: 4, key: "raw_content", label: "Raw content extraction", data: site.rawContentJson },
+        { step: 5, key: "raw_images", label: "Raw image extraction", data: site.rawImagesJson },
+        { step: 6, key: "normalized_content", label: "AI content mapping", data: site.normalizedContentJson },
+        { step: 7, key: "selected_images", label: "AI image selection", data: site.selectedImagesJson },
+        { step: 8, key: "brand_profile", label: "AI brand analysis", data: site.brandProfileJson },
+        { step: 9, key: "source_quality_score", label: "AI source quality scoring", data: site.sourceQualityScoreJson },
+        { step: 10, key: "redesign_plan", label: "Adaptive redesign strategy", data: site.redesignPlanStepJson },
+        { step: 11, key: "completed_content", label: "Content completion", data: site.completedContentJson },
+        { step: 12, key: "translated_content", label: "Translation generation", data: site.translatedContentJson },
+        { step: 13, key: "final_render_data", label: "Final premium website generation", data: site.finalRenderDataJson },
+        { step: 14, key: "ai_review", label: "AI review", data: site.aiReviewJson },
+        { step: 15, key: "correction_pass", label: "AI correction pass", data: site.correctionPassJson },
+      ] as const,
+    [site],
+  );
 
   useEffect(() => {
     const handler = (event: BeforeUnloadEvent) => {
@@ -373,6 +395,7 @@ export function DemoSiteEditor({ site, initialVersions }: DemoSiteEditorProps) {
             ["visual", "Visual Edit"],
             ["json", "JSON Edit"],
             ["ai", "AI Edit"],
+            ["pipeline", "Pipeline Debug"],
             ["versions", "Version History"]
           ] as Array<[EditorTab, string]>).map(([id, label]) => (
             <button
@@ -616,6 +639,36 @@ export function DemoSiteEditor({ site, initialVersions }: DemoSiteEditorProps) {
                 <p className="rounded-xl border border-dashed border-zinc-300 bg-zinc-50 p-4 text-sm text-zinc-600">No versions found yet.</p>
               )}
             </div>
+          </section>
+        ) : null}
+
+        {activeTab === "pipeline" ? (
+          <section className="space-y-4">
+            <article className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-soft">
+              <h2 className="font-[var(--font-heading)] text-3xl">Sequential Pipeline Inspector</h2>
+              <p className="mt-1 text-sm text-zinc-600">Every stage output is stored and inspectable. Use this view to identify where quality drops.</p>
+            </article>
+
+            <article className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-soft">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-600">Pipeline Run Log</h3>
+              <pre className="mt-3 max-h-80 overflow-auto rounded-xl bg-zinc-950 p-3 text-xs text-zinc-100">
+                {JSON.stringify(site.pipelineRunJson ?? { status: "no pipeline metadata" }, null, 2)}
+              </pre>
+            </article>
+
+            {pipelineStages.map((stage) => (
+              <article key={stage.key} className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-soft">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <h3 className="font-semibold text-zinc-900">Step {stage.step}: {stage.label}</h3>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${stage.data ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>
+                    {stage.data ? "stored" : "missing"}
+                  </span>
+                </div>
+                <pre className="max-h-96 overflow-auto rounded-xl bg-zinc-950 p-3 text-xs text-zinc-100">
+                  {JSON.stringify(stage.data ?? { message: "No data persisted for this step." }, null, 2)}
+                </pre>
+              </article>
+            ))}
           </section>
         ) : null}
       </div>

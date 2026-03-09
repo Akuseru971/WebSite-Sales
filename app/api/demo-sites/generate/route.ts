@@ -3,7 +3,7 @@ import type { BusinessCategory, DemoSiteStyle } from "@/lib/demo-sites/types";
 import type { CommerceLead } from "@/lib/leads/types";
 import { getAuthenticatedUserIdOrNull } from "@/lib/supabase/auth";
 import { enrichCommerceLead } from "@/lib/leads/enrichment";
-import { generateDemoSiteContentWithAI } from "@/lib/demo-sites/ai-generate";
+import { runSequentialRedesignPipeline } from "@/lib/demo-sites/sequential-pipeline";
 import { createGeneratedDemoSite } from "@/lib/demo-sites/repository";
 import { buildOutreachEmailDraft } from "@/lib/leads/outreach-email";
 
@@ -51,17 +51,17 @@ export async function POST(request: Request) {
     }
 
     const enriched = await enrichCommerceLead(body.lead);
-    const content = await generateDemoSiteContentWithAI({
+    const pipeline = await runSequentialRedesignPipeline({
+      enriched,
       category: body.siteOption.templateType,
-      style: body.siteOption.style,
-      siteLabel: body.siteOption.label,
-      enriched
+      style: body.siteOption.style
     });
 
     const site = await createGeneratedDemoSite({
-      content,
+      content: pipeline.content,
       templateType: body.siteOption.templateType,
       designStyle: body.siteOption.style,
+      pipelineArtifacts: pipeline.artifacts,
       actorUserId: actorUserId ?? undefined,
       activityType: "demo_site_generated_from_live_lead",
       changeNote: `Generated from lead ${body.lead.businessName} (${body.siteOption.label})`
@@ -69,7 +69,7 @@ export async function POST(request: Request) {
 
     const outreachEmail = buildOutreachEmailDraft({
       enriched,
-      generatedContent: content
+      generatedContent: pipeline.content
     });
 
     return NextResponse.json({
@@ -80,13 +80,19 @@ export async function POST(request: Request) {
         hasStructuredExtraction: Boolean(enriched.extractedWebsite),
         imageCount: enriched.suggestedImages.length,
         menuHintCount: enriched.inferredMenuItems.length,
-        redesignPlanReady: Boolean(content.redesignPlan),
-        extractedProfileReady: Boolean(content.extractedSiteProfile),
-        adaptiveCompositionReady: Boolean(content.adaptiveSiteJson),
-        restaurantDiagnostics: content.restaurantDiagnostics
+        redesignPlanReady: Boolean(pipeline.content.redesignPlan),
+        extractedProfileReady: Boolean(pipeline.content.extractedSiteProfile),
+        adaptiveCompositionReady: Boolean(pipeline.content.adaptiveSiteJson),
+        pipelineStages:
+          (pipeline.artifacts.pipelineRun?.stageLogs as Array<Record<string, unknown>> | undefined)?.map((stage) => ({
+            step: stage.step,
+            key: stage.key,
+            status: stage.status,
+          })) ?? [],
+        restaurantDiagnostics: pipeline.content.restaurantDiagnostics
           ? {
-              missingFields: content.restaurantDiagnostics.missingFields,
-              confidence: content.restaurantDiagnostics.confidence,
+              missingFields: pipeline.content.restaurantDiagnostics.missingFields,
+              confidence: pipeline.content.restaurantDiagnostics.confidence,
             }
           : undefined,
       }
