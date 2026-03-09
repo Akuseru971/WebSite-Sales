@@ -87,6 +87,7 @@ interface RenderedDomResult {
   metadata: {
     extractedAt: string;
     usedPlaywright: boolean;
+    fallbackReason?: string;
   };
 }
 
@@ -460,14 +461,68 @@ export async function crawlWebsitePages(params: {
 }
 
 export async function extractRenderedDom(input: CrawlResult): Promise<RenderedDomResult> {
-  const { chromium } = await import("playwright");
+  function buildFallbackRenderedDom(reason: string): RenderedDomResult {
+    return {
+      pages: input.pages.map((page) => ({
+        url: page.url,
+        title: page.title,
+        metaDescription: page.description,
+        ogTags: {},
+        dom: [
+          "<!doctype html>",
+          "<html><head>",
+          `<title>${page.title}</title>`,
+          page.description ? `<meta name=\"description\" content=\"${page.description.replace(/"/g, "&quot;")}\" />` : "",
+          "</head><body>",
+          ...page.headings.map((heading) => `<h2>${heading}</h2>`),
+          ...page.paragraphs.map((paragraph) => `<p>${paragraph}</p>`),
+          ...page.ctas.map((cta) => `<button>${cta}</button>`),
+          ...page.images.map((image) => `<img src=\"${image.url}\" alt=\"${image.alt || "image"}\" />`),
+          "</body></html>",
+        ].join("\n"),
+        visibleContent: {
+          headings: uniqueStrings(page.headings, 40),
+          paragraphs: uniqueStrings(page.paragraphs, 200),
+          buttons: uniqueStrings(page.ctas, 40),
+          navItems: [],
+          footerText: [],
+          ctas: uniqueStrings(page.ctas, 20),
+          images: page.images.map((image) => ({
+            src: image.url,
+            alt: image.alt,
+            width: image.width,
+            height: image.height,
+            y: 0,
+          })),
+        },
+      })),
+      metadata: {
+        extractedAt: new Date().toISOString(),
+        usedPlaywright: false,
+        fallbackReason: reason,
+      },
+    };
+  }
+
+  let chromium: Awaited<typeof import("playwright")>["chromium"];
+  try {
+    ({ chromium } = await import("playwright"));
+  } catch {
+    return buildFallbackRenderedDom("Playwright package unavailable.");
+  }
+
   let browser: Awaited<ReturnType<typeof chromium.launch>> | null = null;
 
   try {
-    browser = await chromium.launch({
-      headless: true,
-      args: ["--no-sandbox", "--disable-dev-shm-usage"],
-    });
+    try {
+      browser = await chromium.launch({
+        headless: true,
+        args: ["--no-sandbox", "--disable-dev-shm-usage"],
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Playwright browser launch failed.";
+      return buildFallbackRenderedDom(message);
+    }
 
     const context = await browser.newContext({
       viewport: { width: 1440, height: 900 },
@@ -481,11 +536,37 @@ export async function extractRenderedDom(input: CrawlResult): Promise<RenderedDo
     for (const crawled of input.pages) {
       const page = await context.newPage();
       try {
-        await page.goto(crawled.url, { waitUntil: "domcontentloaded", timeout: 20_000 });
         try {
-          await page.waitForLoadState("networkidle", { timeout: 6_000 });
+          await page.goto(crawled.url, { waitUntil: "domcontentloaded", timeout: 20_000 });
+          try {
+            await page.waitForLoadState("networkidle", { timeout: 6_000 });
+          } catch {
+            // Some websites keep network open continuously.
+          }
         } catch {
-          // Some websites keep network open continuously.
+          pages.push({
+            url: crawled.url,
+            title: crawled.title,
+            metaDescription: crawled.description,
+            ogTags: {},
+            dom: crawled.paragraphs.map((paragraph) => `<p>${paragraph}</p>`).join("\n"),
+            visibleContent: {
+              headings: uniqueStrings(crawled.headings, 40),
+              paragraphs: uniqueStrings(crawled.paragraphs, 200),
+              buttons: uniqueStrings(crawled.ctas, 40),
+              navItems: [],
+              footerText: [],
+              ctas: uniqueStrings(crawled.ctas, 20),
+              images: crawled.images.map((image) => ({
+                src: image.url,
+                alt: image.alt,
+                width: image.width,
+                height: image.height,
+                y: 0,
+              })),
+            },
+          });
+          continue;
         }
 
         await page.evaluate(async () => {
