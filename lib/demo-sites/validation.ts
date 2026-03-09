@@ -253,8 +253,8 @@ export const demoSiteContentSchema: z.ZodType<DemoSiteContent> = z.object({
   restaurantContent: z
     .object({
       restaurantName: z.string().min(1),
-      primaryLocale: z.enum(["fr", "en", "pt", "es", "it", "de", "nl"]),
-      supportedLocales: z.array(z.enum(["fr", "en", "pt", "es", "it", "de", "nl"])).min(1),
+      primaryLocale: z.enum(["fr", "en", "pt", "es", "it", "de", "nl"]).optional().default("en"),
+      supportedLocales: z.array(z.enum(["fr", "en", "pt", "es", "it", "de", "nl"])).min(1).optional().default(["en"]),
       tagline: z.string().optional(),
       shortDescription: z.string().optional(),
       brandColors: z.object({
@@ -330,10 +330,11 @@ export const demoSiteContentSchema: z.ZodType<DemoSiteContent> = z.object({
               es: z.string().optional(),
               it: z.string().optional(),
               de: z.string().optional(),
+              nl: z.string().optional(),
             })
             .optional(),
         }),
-      ),
+      ).optional().default([]),
       translations: z
         .object({
           fr: z
@@ -546,8 +547,44 @@ export const demoSiteContentSchema: z.ZodType<DemoSiteContent> = z.object({
               signatureHighlights: z.array(z.string()),
             })
             .optional(),
+          nl: z
+            .object({
+              tagline: z.string().optional(),
+              shortDescription: z.string().optional(),
+              aboutText: z.string().optional(),
+              sectionLabels: z.object({
+                about: z.string(),
+                menu: z.string(),
+                gallery: z.string(),
+                testimonials: z.string(),
+                reservation: z.string(),
+                details: z.string(),
+              }),
+              cta: z.object({
+                reserve: z.string(),
+                contact: z.string(),
+                viewMenu: z.string(),
+                openFullMenu: z.string(),
+              }),
+              menuSections: z.array(
+                z.object({
+                  title: z.string().min(1),
+                  items: z.array(
+                    z.object({
+                      name: z.string().min(1),
+                      description: z.string().optional(),
+                      price: z.string().optional(),
+                    }),
+                  ),
+                }),
+              ),
+              testimonialHeading: z.string().optional(),
+              signatureHighlights: z.array(z.string()),
+            })
+            .optional(),
         })
-        .optional(),
+        .optional()
+        .default({}),
       sourceUrl: z.string().url(),
       extractionConfidence: z.object({
         content: z.enum(["high", "medium", "low"]),

@@ -22,14 +22,16 @@ export function PremiumRestaurantTemplate({ site }: PremiumRestaurantTemplatePro
     return null;
   }
 
-  const localized = restaurant.translations[locale] ?? restaurant.translations.en;
+  const translations = restaurant.translations ?? {};
+  const localized = translations[locale] ?? translations.en;
+  const visualAssets = restaurant.visualAssets ?? [];
 
   const heroImage = firstNonEmpty(
-    getSectionImages({ assets: restaurant.visualAssets, sectionId: "hero", preferredRoles: ["hero", "food", "dining_room", "interior"], limit: 4 }).map((image) => image.url),
+    getSectionImages({ assets: visualAssets, sectionId: "hero", preferredRoles: ["hero", "food", "dining_room", "interior"], limit: 4 }).map((image) => image.url),
   ) ?? firstNonEmpty([restaurant.heroImages[0], restaurant.galleryImages[0]]);
 
   const galleryUrls = getSectionImages({
-    assets: restaurant.visualAssets,
+    assets: visualAssets,
     sectionId: "gallery",
     preferredRoles: ["gallery", "food", "dining_room", "interior", "team"],
     limit: 12,
@@ -47,7 +49,9 @@ export function PremiumRestaurantTemplate({ site }: PremiumRestaurantTemplatePro
   const cta = localized?.cta;
   const detailsLabel = sectionLabels?.details ?? "Details";
 
-  const localeOptions = restaurant.supportedLocales;
+  const localeOptions = restaurant.supportedLocales?.length
+    ? restaurant.supportedLocales
+    : ([defaultLocale, "en"].filter((value, index, list) => list.indexOf(value) === index) as RestaurantLocaleCode[]);
 
   return (
     <main
