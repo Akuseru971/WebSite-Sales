@@ -6,6 +6,8 @@ import type {
   DemoSiteContent,
   DemoSiteStyle,
   RedesignPlan,
+  RestaurantContent,
+  RestaurantLocaleCode,
   SequentialPipelineArtifacts,
   SourceAssetsJson,
   SourceBrandSignals,
@@ -21,6 +23,8 @@ import { buildSupportedLocales, resolvePrimaryLocale } from "@/lib/demo-sites/lo
 import { validateDemoSiteContent } from "@/lib/demo-sites/validation";
 import { generateAdaptiveDemoSiteJson } from "@/lib/demo-sites/redesign-intelligence";
 import { generateRedesignedHtmlFromSource } from "@/lib/demo-sites/source-redesign-pipeline";
+import { generateRestaurantTranslations } from "@/lib/demo-sites/multilingual";
+import { getFallbackImagesForSection, mergeSourceAndFallbackImages } from "@/lib/demo-sites/image-augmentation";
 
 export interface PipelineExecutionResult {
   content: DemoSiteContent;
@@ -244,6 +248,11 @@ interface FinalRenderDataOutput {
     hasHtmlPreview: boolean;
   };
   content: DemoSiteContent;
+}
+
+interface RestaurantSemanticAudit {
+  valid: boolean;
+  failedChecks: string[];
 }
 
 interface AIReviewOutput {
@@ -1358,6 +1367,410 @@ function toThemeFromBrand(brand: BrandProfile): DemoSiteContent["theme"] {
   };
 }
 
+function mapImageRoleToRestaurantRole(role: ImageRole): RestaurantContent["visualAssets"][number]["role"] {
+  if (role === "logo") return "logo";
+  if (role === "hero") return "hero";
+  if (role === "food") return "food";
+  if (role === "room") return "room";
+  if (role === "amenity") return "amenity";
+  if (role === "interior") return "interior";
+  if (role === "exterior") return "property_exterior";
+  if (role === "property") return "property_exterior";
+  if (role === "vehicle") return "vehicle";
+  if (role === "team") return "team";
+  if (role === "decorative") return "decorative";
+  return "gallery";
+}
+
+function localeText(primaryLocale: RestaurantLocaleCode) {
+  if (primaryLocale === "fr") {
+    return {
+      reserve: "Reserver",
+      viewMenu: "Voir la carte",
+      about: "A propos",
+      menu: "Nos plats",
+      gallery: "Galerie",
+      contact: "Contact",
+      reservation: "Reservation",
+      details: "Informations pratiques",
+    };
+  }
+
+  return {
+    reserve: "Reserve",
+    viewMenu: "View menu",
+    about: "About",
+    menu: "Menu",
+    gallery: "Gallery",
+    contact: "Contact",
+    reservation: "Reservation",
+    details: "Details",
+  };
+}
+
+async function buildRestaurantSourceFirstContent(input: {
+  lead: EnrichedCommerceLead["lead"];
+  reconstructed: ReconstructedSource;
+  normalizedContent: NormalizedBusinessContent;
+  selectedImages: SelectedImagesOutput;
+  brandProfile: BrandProfile;
+}): Promise<RestaurantContent> {
+  const primaryLocale = resolvePrimaryLocale(input.lead.city, input.lead.country) as RestaurantLocaleCode;
+  const supportedLocales = buildSupportedLocales(primaryLocale) as RestaurantLocaleCode[];
+  const localText = localeText(primaryLocale);
+
+  const reservationLabelFromSource = input.reconstructed.structureSummary.ctaInfo.find((line) =>
+    /(reserv|reserve|book|table|tableau|livraison|commander)/i.test(line),
+  );
+  const reservationUrl = input.normalizedContent.reservation.links.find((value) => /^https?:\/\//i.test(value));
+
+  const sourceHeroAssets = input.selectedImages.selectedImages
+    .filter((image) => ["hero", "food", "interior", "gallery"].includes(image.role))
+    .map((image) => ({
+      url: image.url,
+      role: mapImageRoleToRestaurantRole(image.role),
+      sourceType: "source" as const,
+      sectionId: "hero",
+      origin: "pipeline-selected",
+      alt: image.alt,
+    }));
+
+  const heroAssets = mergeSourceAndFallbackImages({
+    sourceImages: sourceHeroAssets,
+    fallbackImages: getFallbackImagesForSection({
+      category: "restaurant",
+      sectionId: "hero",
+      preferredRoles: ["hero", "food", "dining_room", "interior"],
+      limit: 4,
+    }),
+    minRequired: 1,
+    maxTotal: 4,
+  });
+
+  const sourceGalleryAssets = input.selectedImages.selectedImages
+    .filter((image) => !["logo", "decorative"].includes(image.role))
+    .map((image) => ({
+      url: image.url,
+      role: mapImageRoleToRestaurantRole(image.role),
+      sourceType: "source" as const,
+      sectionId: "gallery",
+      origin: "pipeline-selected",
+      alt: image.alt,
+    }));
+
+  const galleryAssets = mergeSourceAndFallbackImages({
+    sourceImages: sourceGalleryAssets,
+    fallbackImages: getFallbackImagesForSection({
+      category: "restaurant",
+      sectionId: "gallery",
+      preferredRoles: ["gallery", "food", "dining_room", "interior", "team"],
+      limit: 16,
+    }),
+    minRequired: 4,
+    maxTotal: 16,
+  });
+
+  const menuSections = input.normalizedContent.menuSections.length
+    ? input.normalizedContent.menuSections.map((section) => ({
+        title: section.title,
+        items: section.items.slice(0, 10).map((item) => ({ name: item })),
+      }))
+    : [
+        {
+          title: primaryLocale === "fr" ? "Carte" : "Menu",
+          items: input.reconstructed.sourceContentJson.menuItems.slice(0, 12).map((item) => ({ name: item })),
+        },
+      ].filter((section) => section.items.length > 0);
+
+  const socialLinks = input.normalizedContent.socialLinks
+    .filter((value) => /^https?:\/\//i.test(value))
+    .map((url) => {
+      const platform = /instagram/i.test(url)
+        ? "instagram"
+        : /facebook/i.test(url)
+          ? "facebook"
+          : /tiktok/i.test(url)
+            ? "tiktok"
+            : /linkedin/i.test(url)
+              ? "linkedin"
+              : /youtube/i.test(url)
+                ? "youtube"
+                : "website";
+      return { platform, url };
+    });
+
+  const restaurant: RestaurantContent = {
+    restaurantName: input.normalizedContent.businessName || input.lead.businessName,
+    primaryLocale,
+    supportedLocales,
+    tagline: input.normalizedContent.tagline,
+    shortDescription: input.normalizedContent.shortDescription,
+    aboutText: input.normalizedContent.aboutText,
+    signatureHighlights: input.normalizedContent.signatureHighlights,
+    brandColors: {
+      primary: input.brandProfile.extractedColors[0],
+      secondary: input.brandProfile.extractedColors[1],
+      accent: input.brandProfile.extractedColors[2],
+    },
+    logoUrl: input.selectedImages.selectedImages.find((image) => image.role === "logo")?.url,
+    heroImages: heroAssets.map((image) => image.url),
+    galleryImages: galleryAssets.map((image) => image.url),
+    contact: {
+      phone: input.normalizedContent.contact.phones[0] ?? input.lead.phone,
+      email: input.normalizedContent.contact.emails[0] ?? input.lead.email,
+      address: input.normalizedContent.contact.addresses[0] ?? input.lead.address,
+    },
+    openingHours: input.normalizedContent.openingHours,
+    reservation: {
+      label: reservationLabelFromSource ?? localText.reserve,
+      url: reservationUrl,
+    },
+    menuSections,
+    menuPdfUrls: input.normalizedContent.reservation.links.filter((value) => /\.pdf(\?|$)/i.test(value)),
+    menuPubliclyAvailable: menuSections.some((section) => section.items.length > 0),
+    testimonials: input.normalizedContent.testimonials.slice(0, 6).map((text) => ({ text })),
+    socialLinks,
+    visualAssets: [
+      ...heroAssets.map((image) => ({
+        url: image.url,
+        role: mapImageRoleToRestaurantRole((image.role as ImageRole) ?? "gallery"),
+        sourceType: image.sourceType,
+        sectionId: "hero",
+        origin: image.origin,
+      })),
+      ...galleryAssets.map((image) => ({
+        url: image.url,
+        role: mapImageRoleToRestaurantRole((image.role as ImageRole) ?? "gallery"),
+        sourceType: image.sourceType,
+        sectionId: "gallery",
+        origin: image.origin,
+      })),
+    ],
+    translations: {},
+    sourceUrl: input.lead.website?.startsWith("http") ? input.lead.website : `https://${input.lead.website ?? "example.com"}`,
+    extractionConfidence: {
+      content: input.normalizedContent.services.length > 0 ? "high" : "medium",
+      images: input.selectedImages.selectedImages.length >= 4 ? "high" : "medium",
+      menu: menuSections.length > 0 ? "high" : "low",
+      colors: input.brandProfile.extractedColors.length >= 2 ? "high" : "low",
+    },
+  };
+
+  restaurant.translations = await generateRestaurantTranslations({
+    base: restaurant,
+    primaryLocale,
+    supportedLocales,
+  });
+
+  return restaurant;
+}
+
+function buildRestaurantSemanticSections(input: {
+  restaurant: RestaurantContent;
+  sourceNavItems: string[];
+}): DemoSection[] {
+  const localText = localeText(input.restaurant.primaryLocale);
+  const aboutTitle =
+    input.sourceNavItems.find((item) => /a propos|about|histoire|story/i.test(item)) ?? localText.about;
+  const menuTitle =
+    input.sourceNavItems.find((item) => /carte|menu|plats|dish/i.test(item)) ?? localText.menu;
+  const reservationTitle =
+    input.sourceNavItems.find((item) => /reserv|book|table/i.test(item)) ?? localText.reservation;
+
+  const sections: DemoSection[] = [
+    {
+      id: "restaurant-hero-0",
+      type: "hero",
+      enabled: true,
+      order: 0,
+      styleVariant: "restaurant-source-first",
+      content: {
+        badge: input.restaurant.primaryLocale === "fr" ? "Restaurant" : "Restaurant",
+        title: input.restaurant.restaurantName,
+        subtitle: input.restaurant.shortDescription ?? input.restaurant.aboutText ?? "",
+        primaryCta: {
+          label: input.restaurant.reservation?.label ?? localText.reserve,
+          href: input.restaurant.reservation?.url ?? "#contact",
+        },
+        secondaryCta: {
+          label: localText.viewMenu,
+          href: "#menu",
+        },
+        image: input.restaurant.heroImages[0] ?? input.restaurant.galleryImages[0],
+      },
+    },
+    {
+      id: "restaurant-menu-1",
+      type: "menu_highlights",
+      enabled: true,
+      order: 1,
+      styleVariant: "restaurant-source-first",
+      content: {
+        title: menuTitle,
+        items: input.restaurant.menuSections.flatMap((section) =>
+          section.items.slice(0, 6).map((item) => ({
+            name: item.name,
+            description: item.description ?? section.title,
+            priceHint: item.price,
+            image: input.restaurant.galleryImages[0],
+          })),
+        ).slice(0, 8),
+      },
+    },
+    {
+      id: "restaurant-about-2",
+      type: "about",
+      enabled: true,
+      order: 2,
+      styleVariant: "restaurant-source-first",
+      content: {
+        title: aboutTitle,
+        body: input.restaurant.aboutText ?? input.restaurant.shortDescription ?? "",
+        bullets: input.restaurant.signatureHighlights.slice(0, 5),
+      },
+    },
+    {
+      id: "restaurant-gallery-3",
+      type: "gallery",
+      enabled: true,
+      order: 3,
+      styleVariant: "restaurant-source-first",
+      content: {
+        title: localText.gallery,
+        items: input.restaurant.galleryImages.slice(0, 10).map((image, index) => ({
+          image,
+          alt: `${input.restaurant.restaurantName} ${index + 1}`,
+        })),
+      },
+    },
+    {
+      id: "restaurant-cta-4",
+      type: "cta",
+      enabled: true,
+      order: 4,
+      styleVariant: "restaurant-source-first",
+      content: {
+        title: reservationTitle,
+        body: input.restaurant.primaryLocale === "fr" ? "Reservez votre table en quelques clics." : "Reserve your table in a few clicks.",
+        action: {
+          label: input.restaurant.reservation?.label ?? localText.reserve,
+          href: input.restaurant.reservation?.url ?? "#contact",
+        },
+      },
+    },
+    {
+      id: "restaurant-contact-5",
+      type: "contact",
+      enabled: true,
+      order: 5,
+      styleVariant: "restaurant-source-first",
+      content: {
+        title: localText.details,
+        address: input.restaurant.contact.address,
+        phone: input.restaurant.contact.phone,
+        email: input.restaurant.contact.email,
+        hours: input.restaurant.openingHours,
+      },
+    },
+  ];
+
+  return sections
+    .filter((section) => section.type !== "gallery" || section.content.items.length > 0)
+    .filter((section) => section.type !== "menu_highlights" || section.content.items.length > 0)
+    .map((section, index) => ({ ...section, order: index, id: `${section.type}-${index}` }));
+}
+
+function auditRestaurantSemantics(input: {
+  content: DemoSiteContent;
+  expectedPrimaryLocale: RestaurantLocaleCode;
+  originalBusinessName: string;
+}): RestaurantSemanticAudit {
+  const failedChecks: string[] = [];
+  const restaurant = input.content.restaurantContent;
+  if (!restaurant) {
+    return { valid: false, failedChecks: ["missing_restaurant_content"] };
+  }
+
+  if (!restaurant.restaurantName || restaurant.restaurantName.toLowerCase() !== input.originalBusinessName.toLowerCase()) {
+    failedChecks.push("restaurant_name_not_preserved");
+  }
+
+  if (!restaurant.reservation?.label && !restaurant.reservation?.url) {
+    failedChecks.push("reservation_missing");
+  }
+
+  if (!restaurant.menuPubliclyAvailable && restaurant.menuSections.length === 0 && restaurant.menuPdfUrls.length === 0) {
+    failedChecks.push("menu_not_represented");
+  }
+
+  if (!restaurant.openingHours?.length) {
+    failedChecks.push("opening_hours_missing");
+  }
+
+  if (!restaurant.contact.address || !restaurant.contact.phone || !restaurant.contact.email) {
+    failedChecks.push("contact_blocks_incomplete");
+  }
+
+  if (restaurant.primaryLocale !== input.expectedPrimaryLocale) {
+    failedChecks.push("source_language_not_default");
+  }
+
+  const atmosphereText = `${restaurant.aboutText ?? ""} ${(restaurant.signatureHighlights ?? []).join(" ")}`.toLowerCase();
+  if (!/(ambiance|atmosphere|decor|interieur|convivial|intime|cuisine|chef|tradition)/i.test(atmosphereText)) {
+    failedChecks.push("atmosphere_identity_missing");
+  }
+
+  if (!restaurant.heroImages.length) {
+    failedChecks.push("hero_image_missing");
+  }
+
+  if (input.content.sections.some((section) => section.type === "services")) {
+    failedChecks.push("generic_service_cards_present");
+  }
+
+  return {
+    valid: failedChecks.length === 0,
+    failedChecks,
+  };
+}
+
+function applyRestaurantAuditCorrections(input: {
+  content: DemoSiteContent;
+  expectedPrimaryLocale: RestaurantLocaleCode;
+}): DemoSiteContent {
+  const next = JSON.parse(JSON.stringify(input.content)) as DemoSiteContent;
+  if (!next.restaurantContent) {
+    return next;
+  }
+
+  const local = localeText(input.expectedPrimaryLocale);
+  next.restaurantContent.primaryLocale = input.expectedPrimaryLocale;
+  next.restaurantContent.supportedLocales = buildSupportedLocales(input.expectedPrimaryLocale) as RestaurantLocaleCode[];
+
+  if (!next.restaurantContent.heroImages.length) {
+    next.restaurantContent.heroImages = getFallbackImagesForSection({
+      category: "restaurant",
+      sectionId: "hero",
+      preferredRoles: ["hero", "food", "dining_room"],
+      limit: 2,
+    }).map((item) => item.url);
+  }
+
+  if (!next.restaurantContent.reservation?.label) {
+    next.restaurantContent.reservation = {
+      ...next.restaurantContent.reservation,
+      label: local.reserve,
+    };
+  }
+
+  if (!next.restaurantContent.openingHours?.length) {
+    next.restaurantContent.openingHours = [input.expectedPrimaryLocale === "fr" ? "Horaires sur demande" : "Opening hours on request"];
+  }
+
+  next.sections = next.sections.filter((section) => section.type !== "services");
+  return next;
+}
+
 function toRedesignPlanModel(input: { brand: BrandProfile; quality: SourceQualityScore; plan: RedesignPlanStep }): RedesignPlan {
   return {
     brandPositioning: input.brand.brandArchetype,
@@ -1506,6 +1919,121 @@ export async function generateFinalWebsite(input: {
   redesignPlan: RedesignPlanStep;
   translatedContent: TranslatedContentOutput;
 }): Promise<FinalRenderDataOutput> {
+  if (input.category === "restaurant") {
+    const restaurant = await buildRestaurantSourceFirstContent({
+      lead: input.lead,
+      reconstructed: input.reconstructed,
+      normalizedContent: input.completedContent.completedContent,
+      selectedImages: input.selectedImages,
+      brandProfile: input.brandProfile,
+    });
+
+    const semanticSections = buildRestaurantSemanticSections({
+      restaurant,
+      sourceNavItems: input.reconstructed.structureSummary.navItems,
+    });
+
+    const redesignedPlanModel = toRedesignPlanModel({
+      brand: input.brandProfile,
+      quality: input.qualityScore,
+      plan: input.redesignPlan,
+    });
+
+    let restaurantContent = validateDemoSiteContent({
+      businessInfo: {
+        name: restaurant.restaurantName,
+        category: "restaurant",
+        city: input.lead.city,
+        country: input.lead.country ?? inferLocaleProfile(input.lead.country).country,
+        address: restaurant.contact.address,
+        phone: restaurant.contact.phone,
+        email: restaurant.contact.email,
+        tagline: restaurant.tagline,
+        shortDescription: restaurant.shortDescription,
+      },
+      theme: toThemeFromBrand(input.brandProfile),
+      seo: {
+        metaTitle: `${restaurant.restaurantName} | ${input.lead.city}`,
+        metaDescription: restaurant.shortDescription ?? restaurant.aboutText ?? `${restaurant.restaurantName} restaurant in ${input.lead.city}`,
+      },
+      contact: {
+        contactName: restaurant.restaurantName,
+        email: restaurant.contact.email,
+        phone: restaurant.contact.phone,
+        bookingEnabled: true,
+        formEnabled: true,
+        openingHours: restaurant.openingHours,
+      },
+      sections: semanticSections,
+      sourceReconstructedHtml: input.reconstructed.reconstructedHtml,
+      sourceStructureJson: input.reconstructed.sourceStructureJson,
+      sourceContentJson: input.reconstructed.sourceContentJson,
+      sourceAssetsJson: input.reconstructed.sourceAssetsJson,
+      redesignPlan: redesignedPlanModel,
+      adaptiveSiteJson: generateAdaptiveDemoSiteJson(redesignedPlanModel, {
+        businessInfo: {
+          name: restaurant.restaurantName,
+          category: "restaurant",
+          city: input.lead.city,
+          country: input.lead.country ?? "",
+        },
+        theme: toThemeFromBrand(input.brandProfile),
+        seo: {
+          metaTitle: restaurant.restaurantName,
+          metaDescription: restaurant.shortDescription ?? "",
+        },
+        contact: { bookingEnabled: true, formEnabled: true },
+        sections: semanticSections,
+      }),
+      restaurantContent: restaurant,
+    });
+
+    const expectedLocale = resolvePrimaryLocale(input.lead.city, input.lead.country) as RestaurantLocaleCode;
+    let audit = auditRestaurantSemantics({
+      content: restaurantContent,
+      expectedPrimaryLocale: expectedLocale,
+      originalBusinessName: input.lead.businessName,
+    });
+
+    if (!audit.valid) {
+      restaurantContent = validateDemoSiteContent(
+        applyRestaurantAuditCorrections({
+          content: restaurantContent,
+          expectedPrimaryLocale: expectedLocale,
+        }),
+      );
+
+      audit = auditRestaurantSemantics({
+        content: restaurantContent,
+        expectedPrimaryLocale: expectedLocale,
+        originalBusinessName: input.lead.businessName,
+      });
+
+      if (!audit.valid) {
+        throw new Error(`Restaurant semantic audit failed: ${audit.failedChecks.join(", ")}`);
+      }
+    }
+
+    return {
+      finalSiteStructure: {
+        sectionOrder: restaurantContent.sections.map((section) => section.type),
+      },
+      finalRenderData: {
+        generatedHtmlPreview: undefined,
+        adaptiveSiteJson: restaurantContent.adaptiveSiteJson as AdaptiveSiteComposition,
+        usedImageUrls: [
+          ...(restaurantContent.restaurantContent?.heroImages ?? []),
+          ...(restaurantContent.restaurantContent?.galleryImages ?? []),
+        ],
+        finalLocaleReadyContent: input.translatedContent,
+      },
+      previewPageData: {
+        hasHtmlPreview: false,
+      },
+      content: restaurantContent,
+    };
+  }
+
   const sections = buildSectionsFromPipeline({
     content: input.completedContent.completedContent,
     images: input.selectedImages,

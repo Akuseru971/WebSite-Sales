@@ -73,6 +73,16 @@ export function PremiumRestaurantTemplate({ site }: PremiumRestaurantTemplatePro
   const sectionLabels = localized?.sectionLabels;
   const cta = localized?.cta;
   const detailsLabel = sectionLabels?.details ?? "Details";
+  const sourceNav = site.generatedContent.sourceStructureJson?.pages?.[0]?.navItems?.slice(0, 6) ?? [];
+  const semanticNav = sourceNav.length
+    ? sourceNav
+    : [
+        locale === "fr" ? "Accueil" : "Home",
+        sectionLabels?.menu ?? "Menu",
+        sectionLabels?.about ?? "About",
+        sectionLabels?.reservation ?? "Reservation",
+        sectionLabels?.gallery ?? "Gallery",
+      ];
 
   const localeOptions = restaurant.supportedLocales?.length
     ? restaurant.supportedLocales
@@ -127,6 +137,16 @@ export function PremiumRestaurantTemplate({ site }: PremiumRestaurantTemplatePro
               </a>
             ) : null}
           </div>
+        </div>
+
+        <div className="absolute inset-x-0 top-[4.6rem] z-20 mx-auto hidden w-full max-w-7xl px-6 sm:block sm:px-8 lg:px-12">
+          <nav className="flex flex-wrap items-center gap-2 rounded-full border border-white/25 bg-black/20 px-3 py-2 backdrop-blur">
+            {semanticNav.map((item) => (
+              <span key={item} className="rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-white/90">
+                {item}
+              </span>
+            ))}
+          </nav>
         </div>
 
         <div className="absolute inset-0 z-10 mx-auto flex max-w-7xl flex-col justify-end px-6 pb-12 pt-24 sm:px-8 sm:pb-16 lg:px-12 lg:pb-20">
