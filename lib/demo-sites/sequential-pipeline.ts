@@ -1384,10 +1384,17 @@ function buildSectionsFromPipeline(input: {
   plan: RedesignPlanStep;
 }): DemoSection[] {
   const heroImage = input.images.selectedImages.find((image) => image.role === "hero")?.url;
-  const galleryImages = input.images.selectedImages.filter((image) => ["gallery", "food", "interior", "exterior", "property"].includes(image.role)).slice(0, 10);
+  const galleryImages = input.images.selectedImages
+    .filter((image) => ["gallery", "food", "interior", "exterior", "property", "hero"].includes(image.role))
+    .slice(0, 10);
 
-  const sections: DemoSection[] = [
-    {
+  const serviceDescriptions = input.content.services.length
+    ? input.content.services
+    : ["Tailored premium service designed for your business goals."];
+
+  const sectionList: DemoSection[] = [];
+
+  sectionList.push({
       id: "hero-0",
       type: "hero",
       enabled: true,
@@ -1401,8 +1408,9 @@ function buildSectionsFromPipeline(input: {
         secondaryCta: { label: "Discover", href: "#about" },
         image: heroImage,
       },
-    },
-    {
+    });
+
+  sectionList.push({
       id: "about-1",
       type: "about",
       enabled: true,
@@ -1410,11 +1418,15 @@ function buildSectionsFromPipeline(input: {
       styleVariant: "premium",
       content: {
         title: "About",
-        body: input.content.aboutText ?? input.content.shortDescription ?? "",
+        body:
+          input.content.aboutText ??
+          input.content.shortDescription ??
+          `${input.content.businessName} delivers quality-focused professional service.`,
         bullets: input.content.signatureHighlights.slice(0, 4),
       },
-    },
-    {
+    });
+
+  sectionList.push({
       id: "services-2",
       type: "services",
       enabled: true,
@@ -1423,24 +1435,28 @@ function buildSectionsFromPipeline(input: {
       content: {
         title: "Services",
         subtitle: "What we deliver",
-        items: input.content.services.slice(0, 6).map((service, index) => ({
+        items: serviceDescriptions.slice(0, 6).map((service, index) => ({
           title: `Service ${index + 1}`,
           description: service,
         })),
       },
-    },
-    {
+    });
+
+  if (galleryImages.length > 0) {
+    sectionList.push({
       id: "gallery-3",
       type: "gallery",
       enabled: true,
-      order: 3,
+      order: sectionList.length,
       styleVariant: "premium",
       content: {
         title: "Gallery",
         items: galleryImages.map((image, index) => ({ image: image.url, alt: image.alt || `image-${index + 1}` })),
       },
-    },
-    {
+    });
+  }
+
+  sectionList.push({
       id: "cta-4",
       type: "cta",
       enabled: true,
@@ -1451,8 +1467,9 @@ function buildSectionsFromPipeline(input: {
         body: "Connect with us for a personalized offer.",
         action: { label: input.content.reservation.cta ?? "Contact us", href: "#contact" },
       },
-    },
-    {
+    });
+
+  sectionList.push({
       id: "contact-5",
       type: "contact",
       enabled: true,
@@ -1465,11 +1482,10 @@ function buildSectionsFromPipeline(input: {
         email: input.content.contact.emails[0],
         hours: input.content.openingHours,
       },
-    },
-  ];
+    });
 
   const preferredOrder = input.plan.suggestedSectionOrder;
-  return sections
+  return sectionList
     .sort((a, b) => {
       const aIndex = preferredOrder.indexOf(a.type);
       const bIndex = preferredOrder.indexOf(b.type);
