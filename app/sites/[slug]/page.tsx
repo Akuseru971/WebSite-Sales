@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 
 interface SitePageProps {
   params: Promise<{ slug: string }>;
+  searchParams?: Promise<{ variant?: string }>;
 }
 
 export async function generateMetadata({ params }: SitePageProps): Promise<Metadata> {
@@ -29,19 +30,31 @@ export async function generateMetadata({ params }: SitePageProps): Promise<Metad
   };
 }
 
-export default async function SitePage({ params }: SitePageProps) {
+export default async function SitePage({ params, searchParams }: SitePageProps) {
   const { slug } = await params;
   const site = await getDemoSiteBySlug(slug);
+  const query = await searchParams;
 
   if (!site) {
     notFound();
   }
 
+  const variant = (query?.variant ?? "").toLowerCase();
+  const beforeContent =
+    (site.correctedSiteJson as typeof site.generatedContent | undefined) ??
+    ((site.finalRenderDataJson as { content?: unknown } | undefined)?.content as typeof site.generatedContent | undefined) ??
+    site.generatedContent;
+  const afterContent =
+    (site.optimizedSiteJson as typeof site.generatedContent | undefined) ??
+    site.generatedContent;
+
+  const selectedContent = variant === "before" ? beforeContent : afterContent;
+
   const decodedSite = {
     ...site,
-    generatedContent: site.generatedContent.generatedHtmlPreview
-      ? site.generatedContent
-      : deepDecodeHtmlEntities(site.generatedContent),
+    generatedContent: selectedContent.generatedHtmlPreview
+      ? selectedContent
+      : deepDecodeHtmlEntities(selectedContent),
   };
 
   return <DemoTemplateRenderer site={decodedSite} />;

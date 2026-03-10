@@ -755,11 +755,20 @@ export function SiteGenerationPlanner() {
                     ) : null}
                     {plan.createdSiteUrl && plan.optimizationStatus === "applied" ? (
                       <Link
-                        href={plan.createdSiteUrl}
+                        href={plan.createdSiteUrl.includes("?") ? `${plan.createdSiteUrl}&variant=after` : `${plan.createdSiteUrl}?variant=after`}
                         target="_blank"
                         className="rounded-full border border-indigo-300 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700"
                       >
                         Voir resultat ameliore
+                      </Link>
+                    ) : null}
+                    {plan.createdSiteUrl && plan.optimizationStatus === "applied" ? (
+                      <Link
+                        href={plan.createdSiteUrl.includes("?") ? `${plan.createdSiteUrl}&variant=before` : `${plan.createdSiteUrl}?variant=before`}
+                        target="_blank"
+                        className="rounded-full border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-800"
+                      >
+                        Voir version avant
                       </Link>
                     ) : null}
                     {plan.createdSiteEditorUrl && (plan.optimizationStatus === "audited" || plan.optimizationStatus === "applied") ? (
@@ -768,6 +777,14 @@ export function SiteGenerationPlanner() {
                         className="rounded-full border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-800"
                       >
                         Voir rapport d&apos;amelioration
+                      </Link>
+                    ) : null}
+                    {plan.createdSiteId && plan.optimizationStatus === "applied" ? (
+                      <Link
+                        href={`/dashboard/demos/${plan.createdSiteId}/compare`}
+                        className="rounded-full bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-white"
+                      >
+                        Comparer avant/apres
                       </Link>
                     ) : null}
                   </div>
