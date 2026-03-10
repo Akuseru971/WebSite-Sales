@@ -422,6 +422,47 @@ function selectRelevantPages(pages: CrawledPage[], category: BusinessCategory, m
     .slice(0, maxPages);
 }
 
+function buildSyntheticCrawlResult(params: {
+  enriched: EnrichedCommerceLead;
+  category: BusinessCategory;
+  sourceUrl?: string;
+}): CrawlResult {
+  const lead = params.enriched.lead;
+  const fallbackUrl = params.sourceUrl ?? (lead.website?.startsWith("http") ? lead.website : `https://${lead.website ?? "example.com"}`);
+  const shortDescription =
+    params.enriched.inferredDescription ??
+    lead.description ??
+    `${lead.businessName} - ${lead.category} - ${lead.city}`;
+
+  const syntheticPage: CrawledPage = {
+    url: fallbackUrl,
+    title: lead.businessName,
+    description: shortDescription,
+    links: [],
+    headings: [lead.businessName, lead.city, "Reservation", "Contact"],
+    paragraphs: [shortDescription],
+    ctas: ["Contact", "Reservation"],
+    images: (params.enriched.suggestedImages ?? []).slice(0, 6).map((url) => ({
+      url,
+      alt: `${lead.businessName} image`,
+      width: 1200,
+      height: 800,
+    })),
+  };
+
+  return {
+    sourceUrl: fallbackUrl,
+    pages: [syntheticPage],
+    discoveredLinks: [],
+    metadata: {
+      category: params.category,
+      sameDomainOnly: true,
+      crawledAt: new Date().toISOString(),
+      maxPages: 1,
+    },
+  };
+}
+
 export async function crawlWebsitePages(params: {
   enriched: EnrichedCommerceLead;
   category: BusinessCategory;
@@ -430,7 +471,11 @@ export async function crawlWebsitePages(params: {
   const fromEnrichment = params.enriched.extractedWebsite;
 
   if (!sourceUrl && !fromEnrichment) {
-    throw new Error("No source website available for crawl step.");
+    return buildSyntheticCrawlResult({
+      enriched: params.enriched,
+      category: params.category,
+      sourceUrl,
+    });
   }
 
   let extracted = fromEnrichment ?? null;
@@ -443,7 +488,11 @@ export async function crawlWebsitePages(params: {
   }
 
   if (!extracted || extracted.pages.length === 0) {
-    throw new Error("Website crawl returned no pages.");
+    return buildSyntheticCrawlResult({
+      enriched: params.enriched,
+      category: params.category,
+      sourceUrl,
+    });
   }
 
   const pages: CrawledPage[] = extracted.pages.map((page) => ({
