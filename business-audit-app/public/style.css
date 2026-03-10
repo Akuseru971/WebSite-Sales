@@ -83,6 +83,15 @@ a {
   font: inherit;
 }
 
+.field select {
+  width: 100%;
+  border: 1px solid #cfd5dc;
+  border-radius: 10px;
+  padding: 10px;
+  font: inherit;
+  background: #fff;
+}
+
 .primary-btn,
 .secondary-btn {
   border: none;
@@ -103,6 +112,17 @@ a {
   background: #fff;
   border: 1px solid #d2d8de;
   color: var(--text);
+}
+
+.ghost-btn {
+  border: 1px solid #d2d8de;
+  border-radius: 999px;
+  padding: 10px 16px;
+  background: #fff;
+  color: #5f6368;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
 }
 
 .results-wrap {
@@ -145,6 +165,34 @@ a {
 
 .generate-btn {
   margin-top: 8px;
+}
+
+.card-actions {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+}
+
+.result-card {
+  position: relative;
+}
+
+.result-card.skipped {
+  opacity: 0.62;
+  background: #f8f9fa;
+}
+
+.skipped-badge {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: #eceff1;
+  color: #5f6368;
+  border: 1px solid #dadce0;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
 }
 
 .loading,

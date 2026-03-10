@@ -31,10 +31,9 @@ http://localhost:3001
 
 ## Structure
 
-- `server.js`: backend Express + route API de recherche.
-- `services/businessSearch.js`: service mock `searchBusinesses(city, category)` remplaçable par Google Places ou Apify.
+- `server.js`: backend Express + route API `GET /api/search?city=Marseille&type=restaurant`.
+- `services/businessSearch.js`: service mock `searchBusinesses(city, type)` remplaçable par Google Places ou Apify.
 - `public/index.html`: interface de recherche + liste des resultats.
 - `public/preview.html`: page preview optimisee (simulation).
-- `public/search.js`: logique recherche et selection business.
-- `public/preview.js`: generation contenu optimise et rendu fiche.
-- `public/styles.css`: styles globaux.
+- `public/app.js`: logique frontend (recherche, passer, analyser, preview, generation optimisee).
+- `public/style.css`: styles globaux.

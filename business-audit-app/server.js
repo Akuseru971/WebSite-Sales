@@ -8,16 +8,16 @@ const PORT = process.env.PORT || 3001;
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-app.get("/api/businesses/search", async (req, res) => {
+app.get("/api/search", async (req, res) => {
   try {
     const city = req.query.city || "";
-    const category = req.query.category || "";
+    const type = req.query.type || "tout";
 
-    const businesses = await searchBusinesses(city, category);
+    const businesses = await searchBusinesses(city, type);
 
     res.json({
       city,
-      category,
+      type,
       count: businesses.length,
       businesses,
     });
