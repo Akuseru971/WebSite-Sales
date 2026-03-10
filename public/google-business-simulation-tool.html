@@ -87,7 +87,8 @@
       }
 
       .field input,
-      .field textarea {
+      .field textarea,
+      .field select {
         width: 100%;
         border: 1px solid #cbd1d7;
         border-radius: 10px;
@@ -145,6 +146,61 @@
 
       .status.success {
         color: #137333;
+      }
+
+      .search-box {
+        margin-bottom: 12px;
+        padding: 10px;
+        border: 1px solid #dfe3e8;
+        border-radius: 12px;
+        background: #f8f9fa;
+      }
+
+      .btn-search {
+        width: 100%;
+        border: none;
+        border-radius: 999px;
+        background: var(--blue);
+        color: #fff;
+        font-weight: 700;
+        padding: 10px 12px;
+        cursor: pointer;
+      }
+
+      .results-list {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 12px;
+        max-height: 230px;
+        overflow: auto;
+      }
+
+      .result-card {
+        border: 1px solid #dfe3e8;
+        border-radius: 10px;
+        padding: 8px;
+        background: #fff;
+      }
+
+      .result-card h4 {
+        margin: 0 0 4px;
+        font-size: 14px;
+      }
+
+      .result-card p {
+        margin: 0 0 4px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .small-btn {
+        border: 1px solid #dadce0;
+        background: #fff;
+        border-radius: 999px;
+        padding: 5px 9px;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
       }
 
       .preview {
@@ -373,11 +429,29 @@
     <div class="layout">
       <aside class="card form-panel">
         <h1>Simulateur Google Business</h1>
-        <p class="hint">Saisis les informations puis clique sur Generate Page.</p>
+        <p class="hint">Etape 1: recherche des lieux par ville. Etape 2: Analyser un lieu.</p>
 
-        <div class="field"><label>URL existante a analyser</label><input id="analyzeUrl" placeholder="https://www.exemple.com" /></div>
-        <button class="btn-analyze" id="analyzeBtn" type="button">Analyser la page reelle</button>
-        <div class="status" id="analyzeStatus"></div>
+        <div class="search-box">
+          <div class="field"><label>Ville</label><input id="searchCity" placeholder="Marseille" /></div>
+          <div class="field">
+            <label>Type de commerce</label>
+            <select id="searchType">
+              <option value="restaurant">Restaurant</option>
+              <option value="pharmacie">Pharmacie</option>
+              <option value="tabac">Tabac</option>
+              <option value="coiffeur">Coiffeur</option>
+              <option value="hotel">Hotel</option>
+              <option value="taxi">Taxi</option>
+              <option value="boulangerie">Boulangerie</option>
+              <option value="garage">Garage</option>
+              <option value="tout">Tout</option>
+            </select>
+          </div>
+          <button class="btn-search" id="searchBtn" type="button">Rechercher</button>
+          <div class="status" id="searchStatus">Saisis une ville puis clique sur Rechercher.</div>
+        </div>
+
+        <div class="results-list" id="searchResults"></div>
 
         <div class="field"><label>Business name</label><input id="businessName" value="Le Jardin Gourmand" /></div>
         <div class="field"><label>Category</label><input id="category" value="Restaurant" /></div>
@@ -467,43 +541,100 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
         setTextLines("images", extracted.images);
       }
 
-      async function analyzeExistingPage() {
-        const urlInput = document.getElementById("analyzeUrl");
-        const analyzeBtn = document.getElementById("analyzeBtn");
-        const status = document.getElementById("analyzeStatus");
-        const url = urlInput.value.trim();
+      function applyBusinessSelection(business) {
+        if (!business) return;
 
-        if (!url) {
-          status.textContent = "Saisis une URL valide avant de lancer l'analyse.";
+        setValue("businessName", business.name);
+        setValue("category", business.category);
+        setValue("city", business.city);
+        setValue("address", business.address);
+        setValue("phone", business.phone || "Telephone a completer");
+        setValue("website", business.website || "#");
+
+        if (Array.isArray(business.photos) && business.photos.length) {
+          setTextLines("images", business.photos.slice(0, 6));
+        }
+
+        const generatedDescription = `${business.name} est une adresse locale a ${business.city}, reconnue pour la qualite de son service et une experience client rassurante. Cette simulation met en avant les elements qui renforcent la visibilite Google et la conversion.`;
+        setValue("description", generatedDescription);
+
+        setTextLines("services", [
+          "Prise de contact rapide",
+          "Service client personalise",
+          "Informations claires et a jour"
+        ]);
+
+        setTextLines("faq", [
+          "Quels sont les horaires ?|Horaires a confirmer selon la periode.",
+          "Comment reserver ?|Par telephone ou via le site web."
+        ]);
+
+        generate();
+      }
+
+      function businessCardHtml(business) {
+        return `
+          <div class="result-card">
+            <h4>${escapeHtml(business.name || "Business")}</h4>
+            <p>${escapeHtml(business.category || "local_business")} · ${escapeHtml(business.city || "")}</p>
+            <p>${escapeHtml(business.address || "Adresse non disponible")}</p>
+            <p>Note: ${Number(business.rating || 0).toFixed(1)} (${business.reviewCount || 0} avis)</p>
+            <button class="small-btn pick-btn" data-id="${escapeHtml(business.id || "")}">Analyser</button>
+          </div>
+        `;
+      }
+
+      let lastSearchBusinesses = [];
+
+      async function searchBusinessesByCity() {
+        const city = document.getElementById("searchCity").value.trim();
+        const type = document.getElementById("searchType").value;
+        const status = document.getElementById("searchStatus");
+        const resultsEl = document.getElementById("searchResults");
+
+        if (!city) {
+          status.textContent = "Merci de saisir une ville.";
           status.className = "status error";
+          resultsEl.innerHTML = "";
           return;
         }
 
-        analyzeBtn.disabled = true;
-        status.textContent = "Analyse en cours...";
+        status.textContent = "Recherche en cours...";
         status.className = "status";
+        resultsEl.innerHTML = "";
 
         try {
-          const response = await fetch("/api/google-business/analyze", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ url })
-          });
-
+          const response = await fetch(`/api/search?city=${encodeURIComponent(city)}&type=${encodeURIComponent(type)}`);
           const payload = await response.json();
+
           if (!response.ok) {
-            throw new Error(payload && payload.error ? payload.error : "Erreur pendant l'analyse.");
+            throw new Error(payload && payload.error ? payload.error : "Recherche impossible");
           }
 
-          applyExtractedData(payload.extracted);
-          generate();
-          status.textContent = "Analyse terminee. Formulaire mis a jour depuis la page reelle.";
+          lastSearchBusinesses = Array.isArray(payload.businesses) ? payload.businesses : [];
+
+          if (!lastSearchBusinesses.length) {
+            status.textContent = "Aucun lieu trouve pour cette recherche.";
+            status.className = "status error";
+            resultsEl.innerHTML = "";
+            return;
+          }
+
+          resultsEl.innerHTML = lastSearchBusinesses.map(businessCardHtml).join("");
+          status.textContent = `${lastSearchBusinesses.length} lieu(x) trouve(s). Clique sur Analyser.`;
           status.className = "status success";
+
+          document.querySelectorAll(".pick-btn").forEach((button) => {
+            button.addEventListener("click", () => {
+              const id = button.getAttribute("data-id");
+              const found = lastSearchBusinesses.find((item) => item.id === id);
+              applyBusinessSelection(found);
+            });
+          });
         } catch (error) {
-          status.textContent = `Erreur: ${error instanceof Error ? error.message : "Analyse impossible."}`;
+          status.textContent = `Erreur: ${error instanceof Error ? error.message : "Recherche impossible."}`;
           status.className = "status error";
-        } finally {
-          analyzeBtn.disabled = false;
+          resultsEl.innerHTML = "";
         }
       }
 
@@ -660,7 +791,7 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
         `;
       }
 
-      document.getElementById("analyzeBtn").addEventListener("click", analyzeExistingPage);
+      document.getElementById("searchBtn").addEventListener("click", searchBusinessesByCity);
       document.getElementById("generateBtn").addEventListener("click", generate);
       generate();
     </script>
