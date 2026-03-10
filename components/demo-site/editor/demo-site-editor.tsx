@@ -478,6 +478,22 @@ export function DemoSiteEditor({ site, initialVersions }: DemoSiteEditorProps) {
             >
               {isRunningOptimizationAction ? "Optimizing..." : "Run Optimization Phase"}
             </button>
+            <button
+              type="button"
+              onClick={() => handleOptimizationAction("apply_fixes")}
+              disabled={isRunningOptimizationAction}
+              className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+            >
+              {isRunningOptimizationAction ? "Applying..." : "Apply 2nd Optimization"}
+            </button>
+            <button
+              type="button"
+              onClick={() => handleOptimizationAction("rerun_optimization")}
+              disabled={isRunningOptimizationAction}
+              className="rounded-full border border-zinc-300 bg-white px-4 py-2 text-sm font-semibold text-zinc-800 disabled:opacity-60"
+            >
+              {isRunningOptimizationAction ? "Re-running..." : "Re-run Optimization"}
+            </button>
             <Link
               href={`/sites/${site.slug}`}
               target="_blank"
@@ -498,7 +514,7 @@ export function DemoSiteEditor({ site, initialVersions }: DemoSiteEditorProps) {
             ["ai", "AI Edit"],
             ["pipeline", "Pipeline Debug"],
             ["review", "Review QA"],
-            ["optimization", "Optimization"],
+            ["optimization", "Optimization Phase"],
             ["versions", "Version History"]
           ] as Array<[EditorTab, string]>).map(([id, label]) => (
             <button
