@@ -1,0 +1,559 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Simulateur d'optimisation Google Business</title>
+    <style>
+      :root {
+        --bg: #f1f3f4;
+        --card: #ffffff;
+        --text: #202124;
+        --muted: #5f6368;
+        --line: #e0e3e7;
+        --blue: #1a73e8;
+        --green: #188038;
+        --shadow: 0 1px 2px rgba(60, 64, 67, 0.16), 0 2px 6px rgba(60, 64, 67, 0.08);
+        --radius: 14px;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Google Sans", "Segoe UI", Roboto, Arial, sans-serif;
+      }
+
+      .disclaimer {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        background: #fff7e0;
+        border-bottom: 1px solid #f0d58b;
+        color: #5f4200;
+        text-align: center;
+        padding: 12px 16px;
+        font-weight: 700;
+      }
+
+      .layout {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 20px;
+        display: grid;
+        grid-template-columns: 360px 1fr;
+        gap: 20px;
+      }
+
+      .card {
+        background: var(--card);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        border: 1px solid var(--line);
+      }
+
+      .form-panel {
+        padding: 16px;
+        position: sticky;
+        top: 70px;
+        align-self: start;
+      }
+
+      h1 {
+        font-size: 20px;
+        margin: 0 0 12px;
+      }
+
+      .hint {
+        color: var(--muted);
+        font-size: 13px;
+        margin: 0 0 14px;
+      }
+
+      .field {
+        margin-bottom: 10px;
+      }
+
+      .field label {
+        display: block;
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 5px;
+        font-weight: 600;
+      }
+
+      .field input,
+      .field textarea {
+        width: 100%;
+        border: 1px solid #cbd1d7;
+        border-radius: 10px;
+        padding: 9px 10px;
+        font: inherit;
+        font-size: 14px;
+        background: #fff;
+      }
+
+      .field textarea {
+        min-height: 72px;
+        resize: vertical;
+      }
+
+      .btn-generate {
+        width: 100%;
+        margin-top: 6px;
+        border: none;
+        border-radius: 999px;
+        padding: 11px 14px;
+        background: var(--blue);
+        color: white;
+        font-size: 14px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .preview {
+        padding: 16px;
+      }
+
+      .panel {
+        max-width: 840px;
+        margin: 0 auto;
+        overflow: hidden;
+      }
+
+      .top-header {
+        padding: 18px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .biz-name {
+        font-size: 28px;
+        font-weight: 700;
+        margin: 0;
+      }
+
+      .biz-cat {
+        color: var(--muted);
+        margin-top: 2px;
+        font-size: 15px;
+      }
+
+      .rating-row {
+        margin-top: 10px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .stars {
+        color: #fbbc04;
+        letter-spacing: 1px;
+        font-size: 17px;
+      }
+
+      .meta-line {
+        color: var(--muted);
+        font-size: 14px;
+      }
+
+      .actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 14px;
+      }
+
+      .g-btn {
+        border: 1px solid #d2d8de;
+        background: #fff;
+        color: #1f1f1f;
+        border-radius: 999px;
+        padding: 8px 14px;
+        font-size: 13px;
+        font-weight: 700;
+        text-decoration: none;
+      }
+
+      .tabs {
+        display: flex;
+        gap: 4px;
+        border-bottom: 1px solid var(--line);
+        padding: 0 14px;
+      }
+
+      .tab {
+        border: none;
+        background: transparent;
+        padding: 12px 10px;
+        color: var(--muted);
+        font-weight: 700;
+        cursor: pointer;
+        border-bottom: 3px solid transparent;
+      }
+
+      .tab.active {
+        color: var(--blue);
+        border-color: var(--blue);
+      }
+
+      .section {
+        padding: 16px;
+        border-bottom: 1px solid var(--line);
+      }
+
+      .section h3 {
+        margin: 0 0 10px;
+        font-size: 18px;
+      }
+
+      .gallery {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 8px;
+      }
+
+      .gallery img {
+        width: 100%;
+        aspect-ratio: 4/3;
+        object-fit: cover;
+        border-radius: 10px;
+        border: 1px solid var(--line);
+      }
+
+      .service-list,
+      .faq-list,
+      .review-list,
+      .menu-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .item {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 10px 12px;
+        background: #fff;
+      }
+
+      .check {
+        color: var(--green);
+        font-weight: 700;
+        margin-right: 8px;
+      }
+
+      .review-author {
+        font-weight: 700;
+      }
+
+      .response {
+        margin-top: 8px;
+        padding-left: 10px;
+        border-left: 3px solid #d8e6fb;
+        color: #30435d;
+        font-size: 13px;
+      }
+
+      .rating-breakdown {
+        display: grid;
+        gap: 7px;
+      }
+
+      .bar-row {
+        display: grid;
+        grid-template-columns: 22px 1fr 28px;
+        align-items: center;
+        gap: 8px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .bar {
+        height: 8px;
+        border-radius: 999px;
+        background: #ecf0f4;
+        overflow: hidden;
+      }
+
+      .bar > span {
+        display: block;
+        height: 100%;
+        background: var(--blue);
+      }
+
+      .audit {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+      }
+
+      .score-box {
+        border-radius: 12px;
+        border: 1px solid var(--line);
+        padding: 12px;
+        background: #fff;
+      }
+
+      .score-label {
+        color: var(--muted);
+        font-size: 12px;
+      }
+
+      .score-value {
+        font-size: 28px;
+        font-weight: 800;
+        margin-top: 2px;
+      }
+
+      .cta-wrap {
+        padding: 18px;
+        text-align: center;
+      }
+
+      .bottom-cta {
+        display: inline-block;
+        background: var(--blue);
+        color: #fff;
+        text-decoration: none;
+        border-radius: 999px;
+        font-weight: 700;
+        padding: 12px 20px;
+      }
+
+      @media (max-width: 1080px) {
+        .layout {
+          grid-template-columns: 1fr;
+        }
+
+        .form-panel {
+          position: static;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="disclaimer">Simulation d’optimisation Google Business – Aperçu marketing – non affilié à Google</div>
+
+    <div class="layout">
+      <aside class="card form-panel">
+        <h1>Simulateur Google Business</h1>
+        <p class="hint">Saisis les informations puis clique sur Generate Page.</p>
+
+        <div class="field"><label>Business name</label><input id="businessName" value="Le Jardin Gourmand" /></div>
+        <div class="field"><label>Category</label><input id="category" value="Restaurant" /></div>
+        <div class="field"><label>City</label><input id="city" value="Lyon" /></div>
+        <div class="field"><label>Rating</label><input id="rating" type="number" min="1" max="5" step="0.1" value="4.6" /></div>
+        <div class="field"><label>Review count</label><input id="reviewCount" type="number" value="328" /></div>
+        <div class="field"><label>Address</label><input id="address" value="14 Rue Victor Hugo, 69002 Lyon" /></div>
+        <div class="field"><label>Phone</label><input id="phone" value="04 78 00 00 00" /></div>
+        <div class="field"><label>Website</label><input id="website" value="https://example.com" /></div>
+        <div class="field"><label>Description</label><textarea id="description">Cuisine maison de saison, produits locaux et ambiance chaleureuse en centre-ville.</textarea></div>
+        <div class="field"><label>Services (un par ligne)</label><textarea id="services">Déjeuner sur place
+Dîner
+Vente à emporter
+Options végétariennes
+Réservation en ligne</textarea></div>
+        <div class="field"><label>FAQ (une question par ligne, format: Question|Réponse)</label><textarea id="faq">Avez-vous des options végétariennes ?|Oui, plusieurs plats sont disponibles chaque jour.
+Acceptez-vous les groupes ?|Oui, sur réservation préalable.
+Y a-t-il une terrasse ?|Oui, terrasse disponible aux beaux jours.</textarea></div>
+        <div class="field"><label>Images (6 URLs, une par ligne)</label><textarea id="images">https://images.unsplash.com/photo-1517248135467-4c7edcad34c4
+https://images.unsplash.com/photo-1559339352-11d035aa65de
+https://images.unsplash.com/photo-1555396273-367ea4eb4db5
+https://images.unsplash.com/photo-1552566626-52f8b828add9
+https://images.unsplash.com/photo-1551218808-94e220e084d2
+https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
+
+        <button class="btn-generate" id="generateBtn">Generate Page</button>
+      </aside>
+
+      <section class="preview">
+        <div class="card panel" id="previewPanel"></div>
+      </section>
+    </div>
+
+    <script>
+      function getLines(id) {
+        return document.getElementById(id).value
+          .split("\n")
+          .map((v) => v.trim())
+          .filter(Boolean);
+      }
+
+      function escapeHtml(text) {
+        return text
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/\"/g, "&quot;")
+          .replace(/'/g, "&#39;");
+      }
+
+      function stars(rating) {
+        const full = Math.floor(rating);
+        const half = rating - full >= 0.5 ? 1 : 0;
+        const empty = 5 - full - half;
+        return "★".repeat(full) + (half ? "☆" : "") + "☆".repeat(empty);
+      }
+
+      function buildRatingBreakdown(rating, reviewCount) {
+        const base = Math.max(1, reviewCount);
+        const five = Math.round(base * Math.min(0.72, rating / 5));
+        const four = Math.round(base * 0.17);
+        const three = Math.round(base * 0.07);
+        const two = Math.round(base * 0.03);
+        const one = Math.max(0, base - five - four - three - two);
+        return [
+          { star: 5, count: five },
+          { star: 4, count: four },
+          { star: 3, count: three },
+          { star: 2, count: two },
+          { star: 1, count: one }
+        ];
+      }
+
+      function generate() {
+        const businessName = document.getElementById("businessName").value.trim() || "Business Name";
+        const category = document.getElementById("category").value.trim() || "Category";
+        const city = document.getElementById("city").value.trim() || "City";
+        const rating = Math.max(1, Math.min(5, Number(document.getElementById("rating").value || 4.5)));
+        const reviewCount = Math.max(0, Number(document.getElementById("reviewCount").value || 0));
+        const address = document.getElementById("address").value.trim() || "Adresse à compléter";
+        const phone = document.getElementById("phone").value.trim() || "Téléphone à compléter";
+        const website = document.getElementById("website").value.trim() || "#";
+        const description = document.getElementById("description").value.trim() || "Description à compléter.";
+
+        const services = getLines("services");
+        const faqPairs = getLines("faq").map((line) => {
+          const [q, a] = line.split("|");
+          return { q: q ? q.trim() : "Question", a: a ? a.trim() : "Réponse à compléter" };
+        });
+
+        const inputImages = getLines("images");
+        const fallback = [
+          "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4",
+          "https://images.unsplash.com/photo-1559339352-11d035aa65de",
+          "https://images.unsplash.com/photo-1555396273-367ea4eb4db5",
+          "https://images.unsplash.com/photo-1552566626-52f8b828add9",
+          "https://images.unsplash.com/photo-1551218808-94e220e084d2",
+          "https://images.unsplash.com/photo-1414235077428-338989a2e8c0"
+        ];
+        const images = [...inputImages, ...fallback].slice(0, 6);
+
+        const reviews = [
+          { author: "Camille R.", score: 5, text: "Service rapide et ambiance très agréable.", response: "Merci Camille, ravi que l'ambiance vous ait plu." },
+          { author: "Karim D.", score: 4, text: "Très bon rapport qualité/prix.", response: "Merci Karim, au plaisir de vous revoir bientôt." },
+          { author: "Sophie M.", score: 5, text: "Excellente expérience globale.", response: "Merci Sophie pour votre retour, à très vite." }
+        ];
+
+        const bars = buildRatingBreakdown(rating, reviewCount);
+        const maxBar = Math.max(...bars.map((b) => b.count), 1);
+
+        const currentScore = Math.max(45, Math.round((rating * 20 + Math.min(30, services.length * 4) + Math.min(20, faqPairs.length * 3)) / 1.1));
+        const optimizedScore = Math.min(100, currentScore + 12);
+
+        const panel = document.getElementById("previewPanel");
+        panel.innerHTML = `
+          <div class="top-header">
+            <h2 class="biz-name">${escapeHtml(businessName)}</h2>
+            <div class="biz-cat">${escapeHtml(category)} · ${escapeHtml(city)}</div>
+            <div class="rating-row">
+              <div class="stars">${stars(rating)}</div>
+              <div class="meta-line">${rating.toFixed(1)} · ${reviewCount} avis</div>
+            </div>
+            <div class="meta-line" style="margin-top:6px">${escapeHtml(address)} · ${escapeHtml(phone)}</div>
+            <div class="actions">
+              <a class="g-btn" href="tel:${escapeHtml(phone)}">Call</a>
+              <a class="g-btn" href="https://www.google.com/maps/search/${encodeURIComponent(address)}" target="_blank">Directions</a>
+              <a class="g-btn" href="${escapeHtml(website)}" target="_blank">Website</a>
+              <a class="g-btn" href="#">Reserve</a>
+            </div>
+          </div>
+
+          <div class="tabs">
+            <button class="tab active">Présentation</button>
+            <button class="tab">Avis</button>
+            <button class="tab">Photos</button>
+            <button class="tab">Menu</button>
+          </div>
+
+          <div class="section">
+            <h3>Photos</h3>
+            <div class="gallery">
+              ${images.map((src, i) => `<img src="${escapeHtml(src)}?auto=format&fit=crop&w=900&q=80" alt="Photo ${i + 1}" />`).join("")}
+            </div>
+          </div>
+
+          <div class="section">
+            <h3>Description</h3>
+            <p style="margin:0;color:#3c4043;line-height:1.6">${escapeHtml(description)}</p>
+          </div>
+
+          <div class="section">
+            <h3>Services</h3>
+            <div class="service-list">
+              ${(services.length ? services : ["Service à compléter"]).map((s) => `<div class="item"><span class="check">✓</span>${escapeHtml(s)}</div>`).join("")}
+            </div>
+          </div>
+
+          <div class="section">
+            <h3>FAQ</h3>
+            <div class="faq-list">
+              ${(faqPairs.length ? faqPairs : [{ q: "Question à compléter", a: "Réponse à compléter" }]).map((f) => `<div class="item"><strong>${escapeHtml(f.q)}</strong><div style="margin-top:5px;color:#3c4043">${escapeHtml(f.a)}</div></div>`).join("")}
+            </div>
+          </div>
+
+          <div class="section">
+            <h3>Avis et réponses</h3>
+            <div class="review-list">
+              ${reviews.map((r) => `
+                <div class="item">
+                  <div class="review-author">${escapeHtml(r.author)} · ${"★".repeat(r.score)}</div>
+                  <div style="margin-top:4px;color:#3c4043">${escapeHtml(r.text)}</div>
+                  <div class="response"><strong>Réponse du propriétaire:</strong> ${escapeHtml(r.response)}</div>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+
+          <div class="section">
+            <h3>Répartition des notes</h3>
+            <div class="rating-breakdown">
+              ${bars.map((b) => `
+                <div class="bar-row">
+                  <span>${b.star}</span>
+                  <div class="bar"><span style="width:${Math.round((b.count / maxBar) * 100)}%"></span></div>
+                  <span>${b.count}</span>
+                </div>
+              `).join("")}
+            </div>
+          </div>
+
+          <div class="section">
+            <h3>Audit Score</h3>
+            <div class="audit">
+              <div class="score-box">
+                <div class="score-label">Current score</div>
+                <div class="score-value">${currentScore}</div>
+              </div>
+              <div class="score-box">
+                <div class="score-label">Potential optimized score</div>
+                <div class="score-value" style="color:#188038">${optimizedScore}</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="cta-wrap">
+            <a class="bottom-cta" href="#">Optimiser ma fiche Google</a>
+          </div>
+        `;
+      }
+
+      document.getElementById("generateBtn").addEventListener("click", generate);
+      generate();
+    </script>
+  </body>
+</html>
