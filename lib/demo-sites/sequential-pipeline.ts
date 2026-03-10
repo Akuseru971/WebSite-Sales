@@ -1270,21 +1270,32 @@ export async function completeMissingContentWithAI(input: {
   normalizedContent: NormalizedBusinessContent;
   redesignPlan: RedesignPlanStep;
 }): Promise<CompletedContentOutput> {
+  const fr = looksFrench(
+    input.normalizedContent.businessName,
+    input.normalizedContent.tagline,
+    input.normalizedContent.shortDescription,
+    input.normalizedContent.aboutText,
+    ...input.normalizedContent.services,
+  );
+
   const fallbackUsage: Record<string, string> = {};
   const completed: NormalizedBusinessContent = {
     ...input.normalizedContent,
-    tagline: input.normalizedContent.tagline ?? `${input.normalizedContent.businessName} premium experience`,
+    tagline: input.normalizedContent.tagline ?? specificPlaceholder("tagline", fr),
     shortDescription:
       input.normalizedContent.shortDescription ??
       input.normalizedContent.aboutText?.slice(0, 180) ??
-      `${input.normalizedContent.businessName} crafted solutions.`,
+      specificPlaceholder("description", fr),
     aboutText:
       input.normalizedContent.aboutText ??
-      `${input.normalizedContent.businessName} is committed to quality, reliability, and premium service.`,
+      specificPlaceholder("about", fr),
     services:
       input.normalizedContent.services.length > 0
         ? input.normalizedContent.services
-        : ["Tailored service", "Personalized support", "Premium standards"],
+        : [
+            specificPlaceholder("service", fr),
+            fr ? "[A COMPLETER: Offre secondaire]" : "[TO COMPLETE: Secondary offer]",
+          ],
   } as NormalizedBusinessContent;
 
   if (!input.normalizedContent.tagline) {
@@ -1310,7 +1321,7 @@ export async function completeMissingContentWithAI(input: {
 
   const aiResult = await runAiJson<Partial<CompletedContentOutput>>({
     systemPrompt:
-      "You complete missing non-critical content only. Keep extracted facts as priority. Return JSON with completedContent, fallbackUsage, missingCriticalFieldsWarnings.",
+      "You refine website content with strict source fidelity. Never invent claims. Remove superfluous filler. Keep only useful business information. If data is missing, keep explicit placeholders. Return JSON with completedContent, fallbackUsage, missingCriticalFieldsWarnings.",
     userPrompt: JSON.stringify({ normalizedContent: completed, redesignPlan: input.redesignPlan }),
     fallback: {
       completedContent: completed,
@@ -1449,6 +1460,36 @@ function localeText(primaryLocale: RestaurantLocaleCode) {
     reservation: "Reservation",
     details: "Details",
   };
+}
+
+function looksFrench(...values: Array<string | undefined>): boolean {
+  const text = values.filter(Boolean).join(" ").toLowerCase();
+  return /\b(le|la|les|des|avec|pour|restaurant|contact|horaires|adresse|ville)\b/.test(text);
+}
+
+function specificPlaceholder(
+  field: "tagline" | "description" | "about" | "service" | "phone" | "email" | "address" | "hours",
+  isFr: boolean,
+): string {
+  if (isFr) {
+    if (field === "tagline") return "[A COMPLETER: Positionnement principal]";
+    if (field === "description") return "[A COMPLETER: Description courte de l'etablissement]";
+    if (field === "about") return "[A COMPLETER: Presentation detaillee de l'etablissement]";
+    if (field === "service") return "[A COMPLETER: Offre principale]";
+    if (field === "phone") return "[A COMPLETER: Telephone]";
+    if (field === "email") return "[A COMPLETER: Email de contact]";
+    if (field === "address") return "[A COMPLETER: Adresse]";
+    return "[A COMPLETER: Horaires d'ouverture]";
+  }
+
+  if (field === "tagline") return "[TO COMPLETE: Primary positioning]";
+  if (field === "description") return "[TO COMPLETE: Short business description]";
+  if (field === "about") return "[TO COMPLETE: Detailed business presentation]";
+  if (field === "service") return "[TO COMPLETE: Main offer]";
+  if (field === "phone") return "[TO COMPLETE: Phone number]";
+  if (field === "email") return "[TO COMPLETE: Contact email]";
+  if (field === "address") return "[TO COMPLETE: Address]";
+  return "[TO COMPLETE: Opening hours]";
 }
 
 async function buildRestaurantSourceFirstContent(input: {
@@ -1892,6 +1933,14 @@ function buildSectionsFromPipeline(input: {
   images: SelectedImagesOutput;
   plan: RedesignPlanStep;
 }): DemoSection[] {
+  const fr = looksFrench(
+    input.content.businessName,
+    input.content.tagline,
+    input.content.shortDescription,
+    input.content.aboutText,
+    ...input.content.services,
+  );
+
   const heroImage = input.images.selectedImages.find((image) => image.role === "hero")?.url;
   const galleryImages = input.images.selectedImages
     .filter((image) => ["gallery", "food", "interior", "exterior", "property", "hero"].includes(image.role))
@@ -1899,7 +1948,7 @@ function buildSectionsFromPipeline(input: {
 
   const serviceDescriptions = input.content.services.length
     ? input.content.services
-    : ["Tailored premium service designed for your business goals."];
+    : [specificPlaceholder("service", fr)];
 
   const sectionList: DemoSection[] = [];
 
@@ -1912,9 +1961,9 @@ function buildSectionsFromPipeline(input: {
       content: {
         badge: input.content.signatureHighlights[0],
         title: input.content.businessName,
-        subtitle: input.content.shortDescription ?? input.content.aboutText ?? "Premium website redesign",
-        primaryCta: { label: input.content.reservation.cta ?? "Contact us", href: "#contact" },
-        secondaryCta: { label: "Discover", href: "#about" },
+        subtitle: input.content.shortDescription ?? input.content.aboutText ?? specificPlaceholder("description", fr),
+        primaryCta: { label: input.content.reservation.cta ?? (fr ? "Demander un devis" : "Request a quote"), href: "#contact" },
+        secondaryCta: { label: fr ? "Voir l'activite" : "See activity", href: "#about" },
         image: heroImage,
       },
     });
@@ -1926,11 +1975,11 @@ function buildSectionsFromPipeline(input: {
       order: 1,
       styleVariant: "premium",
       content: {
-        title: "About",
+        title: fr ? "A propos" : "About",
         body:
           input.content.aboutText ??
           input.content.shortDescription ??
-          `${input.content.businessName} delivers quality-focused professional service.`,
+          specificPlaceholder("about", fr),
         bullets: input.content.signatureHighlights.slice(0, 4),
       },
     });
@@ -1942,11 +1991,11 @@ function buildSectionsFromPipeline(input: {
       order: 2,
       styleVariant: "premium",
       content: {
-        title: "Services",
-        subtitle: "What we deliver",
+        title: fr ? "Prestations" : "Services",
+        subtitle: fr ? "Ce que nous proposons" : "What we provide",
         items: serviceDescriptions.slice(0, 6).map((service, index) => ({
-          title: `Service ${index + 1}`,
-          description: service,
+          title: service.length > 60 ? `${fr ? "Offre" : "Offer"} ${index + 1}` : service,
+          description: service.length > 60 ? service : (fr ? "Detail a completer selon l'etablissement." : "Detail to complete for this business."),
         })),
       },
     });
@@ -1959,7 +2008,7 @@ function buildSectionsFromPipeline(input: {
       order: sectionList.length,
       styleVariant: "premium",
       content: {
-        title: "Gallery",
+        title: fr ? "Galerie" : "Gallery",
         items: galleryImages.map((image, index) => ({ image: image.url, alt: image.alt || `image-${index + 1}` })),
       },
     });
@@ -1972,9 +2021,9 @@ function buildSectionsFromPipeline(input: {
       order: 4,
       styleVariant: "premium",
       content: {
-        title: "Ready to get started?",
-        body: "Connect with us for a personalized offer.",
-        action: { label: input.content.reservation.cta ?? "Contact us", href: "#contact" },
+        title: fr ? "Parlons de votre projet" : "Let's discuss your project",
+        body: fr ? "Contactez l'etablissement pour une reponse adaptee." : "Contact the business for a tailored response.",
+        action: { label: input.content.reservation.cta ?? (fr ? "Contacter" : "Contact"), href: "#contact" },
       },
     });
 
@@ -1985,11 +2034,11 @@ function buildSectionsFromPipeline(input: {
       order: 5,
       styleVariant: "premium",
       content: {
-        title: "Contact",
-        address: input.content.contact.addresses[0],
-        phone: input.content.contact.phones[0],
-        email: input.content.contact.emails[0],
-        hours: input.content.openingHours,
+        title: fr ? "Informations de contact" : "Contact details",
+        address: input.content.contact.addresses[0] ?? specificPlaceholder("address", fr),
+        phone: input.content.contact.phones[0] ?? specificPlaceholder("phone", fr),
+        email: input.content.contact.emails[0] ?? specificPlaceholder("email", fr),
+        hours: input.content.openingHours.length ? input.content.openingHours : [specificPlaceholder("hours", fr)],
       },
     });
 
