@@ -22,6 +22,9 @@ interface PlannedGeneration {
   generatedLanguage?: string;
   outreachEmailSubject?: string;
   outreachEmailBody?: string;
+  optimizationStatus?: "idle" | "running" | "audited" | "applied" | "failed";
+  optimizationScore?: number;
+  optimizationError?: string;
 }
 
 const categoryLabels: Record<BusinessCategory, string> = {
@@ -75,6 +78,17 @@ async function readApiPayload(response: Response): Promise<Record<string, unknow
   } catch {
     return { error: raw };
   }
+}
+
+function asNumber(value: unknown): number | undefined {
+  if (typeof value === "number") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  }
+  return undefined;
 }
 
 function asObject(value: unknown): Record<string, unknown> | undefined {
@@ -318,7 +332,9 @@ export function SiteGenerationPlanner() {
                 createdSiteEditorUrl: siteId ? `/dashboard/demos/${siteId}/editor` : undefined,
                 generatedLanguage: localeLanguage,
                 outreachEmailSubject,
-                outreachEmailBody
+                outreachEmailBody,
+                optimizationStatus: "idle",
+                optimizationError: undefined
               }
             : item
         )
@@ -347,6 +363,100 @@ export function SiteGenerationPlanner() {
       // Sequential generation keeps provider/API pressure controlled.
       // eslint-disable-next-line no-await-in-loop
       await generatePlannedSite(id);
+    }
+  }
+
+  async function runUpgradeForPlan(planId: string) {
+    const plan = plannedGenerations.find((item) => item.id === planId);
+    if (!plan?.createdSiteId) {
+      return;
+    }
+
+    setPlannedGenerations((previous) =>
+      previous.map((item) =>
+        item.id === planId
+          ? {
+              ...item,
+              optimizationStatus: "running",
+              optimizationError: undefined,
+            }
+          : item,
+      ),
+    );
+
+    try {
+      const auditResponse = await fetch(`/api/demo-sites/${plan.createdSiteId}/optimization`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action: "run_audit" }),
+      });
+
+      const auditPayload = await readApiPayload(auditResponse);
+      if (!auditResponse.ok) {
+        const message = typeof auditPayload.error === "string" ? auditPayload.error : "Optimization audit failed.";
+        throw new Error(message);
+      }
+
+      const auditData = asObject(auditPayload.optimization);
+      const report = asObject(auditData?.report);
+      const score = asNumber(report?.overallScore);
+
+      setPlannedGenerations((previous) =>
+        previous.map((item) =>
+          item.id === planId
+            ? {
+                ...item,
+                optimizationStatus: "audited",
+                optimizationScore: score ?? item.optimizationScore,
+              }
+            : item,
+        ),
+      );
+
+      const applyResponse = await fetch(`/api/demo-sites/${plan.createdSiteId}/optimization`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action: "apply_fixes" }),
+      });
+
+      const applyPayload = await readApiPayload(applyResponse);
+      if (!applyResponse.ok) {
+        const message = typeof applyPayload.error === "string" ? applyPayload.error : "Optimization apply failed.";
+        throw new Error(message);
+      }
+
+      const applyData = asObject(applyPayload.optimization);
+      const applyReport = asObject(applyData?.report);
+      const applyScore = asNumber(applyReport?.overallScore);
+
+      setPlannedGenerations((previous) =>
+        previous.map((item) =>
+          item.id === planId
+            ? {
+                ...item,
+                optimizationStatus: "applied",
+                optimizationScore: applyScore ?? item.optimizationScore,
+                optimizationError: undefined,
+              }
+            : item,
+        ),
+      );
+    } catch (error) {
+      setPlannedGenerations((previous) =>
+        previous.map((item) =>
+          item.id === planId
+            ? {
+                ...item,
+                optimizationStatus: "failed",
+                optimizationError: error instanceof Error ? error.message : "Optimization failed.",
+              }
+            : item,
+        ),
+      );
     }
   }
 
@@ -579,6 +689,17 @@ export function SiteGenerationPlanner() {
                       {plan.errorMessage}
                     </p>
                   ) : null}
+                  {plan.optimizationStatus ? (
+                    <p className="mt-1 text-xs uppercase tracking-[0.08em] text-zinc-500">
+                      Upgrade: {plan.optimizationStatus}
+                      {typeof plan.optimizationScore === "number" ? ` (score ${Math.round(plan.optimizationScore)})` : ""}
+                    </p>
+                  ) : null}
+                  {plan.optimizationError ? (
+                    <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-700">
+                      {plan.optimizationError}
+                    </p>
+                  ) : null}
                   {plan.outreachEmailSubject ? (
                     <div className="mt-2 rounded-lg border border-zinc-200 bg-white px-3 py-2">
                       <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-500">
@@ -621,6 +742,16 @@ export function SiteGenerationPlanner() {
                       >
                         Ouvrir editeur du site genere
                       </Link>
+                    ) : null}
+                    {plan.createdSiteId ? (
+                      <button
+                        type="button"
+                        className="rounded-full bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
+                        disabled={plan.optimizationStatus === "running"}
+                        onClick={() => runUpgradeForPlan(plan.id)}
+                      >
+                        {plan.optimizationStatus === "running" ? "Upgrade en cours..." : "Upgrade (amelioration)"}
+                      </button>
                     ) : null}
                   </div>
                 </div>
