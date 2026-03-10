@@ -83,6 +83,13 @@ export function PremiumRestaurantTemplate({ site }: PremiumRestaurantTemplatePro
         sectionLabels?.reservation ?? "Reservation",
         sectionLabels?.gallery ?? "Gallery",
       ];
+  const heroChips = signatureHighlights.length
+    ? signatureHighlights.slice(0, 3)
+    : [
+        locale === "fr" ? "Cuisine maison" : "House cuisine",
+        locale === "fr" ? "Produits de saison" : "Seasonal products",
+        locale === "fr" ? "Ambiance soignee" : "Curated ambiance",
+      ];
 
   const localeOptions = restaurant.supportedLocales?.length
     ? restaurant.supportedLocales
@@ -175,9 +182,9 @@ export function PremiumRestaurantTemplate({ site }: PremiumRestaurantTemplatePro
           </div>
 
           <div className="restaurant-fade-up mt-10 grid max-w-3xl grid-cols-1 gap-3 sm:grid-cols-3">
-            <div className="restaurant-stat-chip">Curated Cuisine</div>
-            <div className="restaurant-stat-chip">Seasonal Selection</div>
-            <div className="restaurant-stat-chip">Premium Atmosphere</div>
+            {heroChips.map((chip) => (
+              <div key={chip} className="restaurant-stat-chip">{chip}</div>
+            ))}
           </div>
         </div>
       </section>
@@ -321,7 +328,7 @@ export function PremiumRestaurantTemplate({ site }: PremiumRestaurantTemplatePro
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_12%_12%,rgba(255,255,255,0.18),transparent_34%),radial-gradient(circle_at_90%_85%,rgba(184,131,63,0.22),transparent_42%)]" aria-hidden="true" />
           <div className="relative">
             <p className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--restaurant-accent)]">{sectionLabels?.reservation ?? "Reservation"}</p>
-            <h2 className="mt-3 font-[var(--font-heading)] text-4xl leading-[1] sm:text-5xl">Book your table today</h2>
+            <h2 className="mt-3 font-[var(--font-heading)] text-4xl leading-[1] sm:text-5xl">{locale === "fr" ? "Reservez votre table" : "Book your table"}</h2>
             <p className="mt-4 max-w-2xl text-sm leading-relaxed text-zinc-200 sm:text-base">
             {localized?.shortDescription ?? restaurant.shortDescription ?? `Plan your next dinner at ${restaurant.restaurantName}.`}
             </p>

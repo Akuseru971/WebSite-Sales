@@ -1294,7 +1294,7 @@ export async function completeMissingContentWithAI(input: {
         ? input.normalizedContent.services
         : [
             specificPlaceholder("service", fr),
-            fr ? "[A COMPLETER: Offre secondaire]" : "[TO COMPLETE: Secondary offer]",
+            fr ? "Offre secondaire a renseigner" : "Secondary offer to complete",
           ],
   } as NormalizedBusinessContent;
 
@@ -1472,24 +1472,46 @@ function specificPlaceholder(
   isFr: boolean,
 ): string {
   if (isFr) {
-    if (field === "tagline") return "[A COMPLETER: Positionnement principal]";
-    if (field === "description") return "[A COMPLETER: Description courte de l'etablissement]";
-    if (field === "about") return "[A COMPLETER: Presentation detaillee de l'etablissement]";
-    if (field === "service") return "[A COMPLETER: Offre principale]";
-    if (field === "phone") return "[A COMPLETER: Telephone]";
-    if (field === "email") return "[A COMPLETER: Email de contact]";
-    if (field === "address") return "[A COMPLETER: Adresse]";
-    return "[A COMPLETER: Horaires d'ouverture]";
+    if (field === "tagline") return "Positionnement a renseigner";
+    if (field === "description") return "Description courte a renseigner";
+    if (field === "about") return "Presentation detaillee a renseigner";
+    if (field === "service") return "Offre principale a renseigner";
+    if (field === "phone") return "Telephone a renseigner";
+    if (field === "email") return "Email de contact a renseigner";
+    if (field === "address") return "Adresse a renseigner";
+    return "Horaires d'ouverture a renseigner";
   }
 
-  if (field === "tagline") return "[TO COMPLETE: Primary positioning]";
-  if (field === "description") return "[TO COMPLETE: Short business description]";
-  if (field === "about") return "[TO COMPLETE: Detailed business presentation]";
-  if (field === "service") return "[TO COMPLETE: Main offer]";
-  if (field === "phone") return "[TO COMPLETE: Phone number]";
-  if (field === "email") return "[TO COMPLETE: Contact email]";
-  if (field === "address") return "[TO COMPLETE: Address]";
-  return "[TO COMPLETE: Opening hours]";
+  if (field === "tagline") return "Primary positioning to complete";
+  if (field === "description") return "Short business description to complete";
+  if (field === "about") return "Detailed business presentation to complete";
+  if (field === "service") return "Main offer to complete";
+  if (field === "phone") return "Phone number to complete";
+  if (field === "email") return "Contact email to complete";
+  if (field === "address") return "Address to complete";
+  return "Opening hours to complete";
+}
+
+function inferOpeningHoursFromSource(input: {
+  hours: string[];
+  paragraphs: string[];
+  headings: string[];
+}): string[] {
+  if (input.hours.length > 0) {
+    return input.hours;
+  }
+
+  const candidates = [...input.paragraphs, ...input.headings]
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .filter((line) => /(lun|mar|mer|jeu|ven|sam|dim|mon|tue|wed|thu|fri|sat|sun|\d{1,2}\s*[:h]\s*\d{0,2}|am|pm|ferme|ouvert)/i.test(line))
+    .slice(0, 10);
+
+  if (candidates.length > 0) {
+    return uniqueStrings(candidates, 7);
+  }
+
+  return [];
 }
 
 async function buildRestaurantSourceFirstContent(input: {
@@ -1604,7 +1626,11 @@ async function buildRestaurantSourceFirstContent(input: {
       email: input.normalizedContent.contact.emails[0] ?? input.lead.email,
       address: input.normalizedContent.contact.addresses[0] ?? input.lead.address,
     },
-    openingHours: input.normalizedContent.openingHours,
+    openingHours: inferOpeningHoursFromSource({
+      hours: input.normalizedContent.openingHours,
+      paragraphs: input.reconstructed.sourceContentJson.paragraphs,
+      headings: input.reconstructed.sourceContentJson.headings,
+    }),
     reservation: {
       label: reservationLabelFromSource ?? localText.reserve,
       url: reservationUrl,
@@ -1932,6 +1958,7 @@ function buildSectionsFromPipeline(input: {
   content: NormalizedBusinessContent;
   images: SelectedImagesOutput;
   plan: RedesignPlanStep;
+  category: BusinessCategory;
 }): DemoSection[] {
   const fr = looksFrench(
     input.content.businessName,
@@ -1941,10 +1968,47 @@ function buildSectionsFromPipeline(input: {
     ...input.content.services,
   );
 
-  const heroImage = input.images.selectedImages.find((image) => image.role === "hero")?.url;
-  const galleryImages = input.images.selectedImages
+  const sourceHeroImage = input.images.selectedImages.find((image) => image.role === "hero")?.url;
+  const fallbackHeroImage = getFallbackImagesForSection({
+    category: input.category,
+    sectionId: "hero",
+    preferredRoles: ["hero", "property_exterior", "interior", "food", "room"],
+    limit: 1,
+  })[0]?.url;
+  const heroImage = sourceHeroImage ?? fallbackHeroImage;
+
+  const sourceGalleryImages = input.images.selectedImages
     .filter((image) => ["gallery", "food", "interior", "exterior", "property", "hero"].includes(image.role))
-    .slice(0, 10);
+    .slice(0, 10)
+    .map((image) => ({ url: image.url, alt: image.alt }));
+
+  const fallbackGalleryImages = getFallbackImagesForSection({
+    category: input.category,
+    sectionId: "gallery",
+    preferredRoles: ["gallery", "property_exterior", "interior", "food", "room", "team"],
+    limit: 8,
+  }).map((item) => ({ url: item.url, alt: item.alt ?? "Gallery image" }));
+
+  const galleryImages = mergeSourceAndFallbackImages({
+    sourceImages: sourceGalleryImages.map((image) => ({
+      url: image.url,
+      role: "gallery",
+      sourceType: "source" as const,
+      sectionId: "gallery",
+      origin: "pipeline-selected",
+      alt: image.alt,
+    })),
+    fallbackImages: fallbackGalleryImages.map((image) => ({
+      url: image.url,
+      role: "gallery",
+      sourceType: "fallback" as const,
+      sectionId: "gallery",
+      origin: "fallback-library",
+      alt: image.alt,
+    })),
+    minRequired: 4,
+    maxTotal: 10,
+  });
 
   const serviceDescriptions = input.content.services.length
     ? input.content.services
@@ -2181,6 +2245,7 @@ export async function generateFinalWebsite(input: {
     content: input.completedContent.completedContent,
     images: input.selectedImages,
     plan: input.redesignPlan,
+    category: input.category,
   });
 
   const redesignPlanModel = toRedesignPlanModel({
@@ -2220,7 +2285,11 @@ export async function generateFinalWebsite(input: {
       phone: input.completedContent.completedContent.contact.phones[0] ?? input.lead.phone,
       bookingEnabled: true,
       formEnabled: true,
-      openingHours: input.completedContent.completedContent.openingHours,
+      openingHours: inferOpeningHoursFromSource({
+        hours: input.completedContent.completedContent.openingHours,
+        paragraphs: input.reconstructed.sourceContentJson.paragraphs,
+        headings: input.reconstructed.sourceContentJson.headings,
+      }),
     },
     sections,
     sourceReconstructedHtml: input.reconstructed.reconstructedHtml,
