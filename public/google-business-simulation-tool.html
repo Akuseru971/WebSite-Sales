@@ -128,6 +128,19 @@
         cursor: pointer;
       }
 
+      .btn-optimize {
+        width: 100%;
+        margin-top: 8px;
+        border: 1px solid #137333;
+        border-radius: 999px;
+        padding: 10px 14px;
+        background: #e6f4ea;
+        color: #137333;
+        font-size: 14px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
       .btn-analyze:disabled {
         opacity: 0.65;
         cursor: wait;
@@ -285,6 +298,54 @@
         color: #1f1f1f;
         font-weight: 700;
         font-size: 12px;
+      }
+
+      .compare-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+
+      .compare-card {
+        border: 1px solid #e3e7eb;
+        border-radius: 10px;
+        padding: 10px;
+        background: #fff;
+      }
+
+      .compare-title {
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 6px;
+        font-weight: 700;
+      }
+
+      .compare-value {
+        font-size: 20px;
+        font-weight: 800;
+        margin-bottom: 4px;
+      }
+
+      .delta-up {
+        color: #137333;
+        font-weight: 700;
+      }
+
+      .delta-neutral {
+        color: #5f6368;
+        font-weight: 700;
+      }
+
+      .opt-badge {
+        display: inline-block;
+        margin-top: 8px;
+        font-size: 12px;
+        font-weight: 700;
+        color: #137333;
+        background: #e6f4ea;
+        border: 1px solid #b7dfc3;
+        border-radius: 999px;
+        padding: 4px 10px;
       }
 
       .preview {
@@ -508,6 +569,10 @@
         .analysis-grid {
           grid-template-columns: 1fr;
         }
+
+        .compare-grid {
+          grid-template-columns: 1fr;
+        }
       }
     </style>
   </head>
@@ -584,6 +649,7 @@ https://images.unsplash.com/photo-1551218808-94e220e084d2
 https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
 
         <button class="btn-generate" id="generateBtn">Generate Page</button>
+        <button class="btn-optimize" id="optimizeBtn" type="button">Generer version optimisee + comparatif</button>
       </aside>
 
       <section class="preview">
@@ -731,6 +797,40 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
 
       let lastSearchBusinesses = [];
       let selectedBusinessContext = null;
+      let optimizationMode = false;
+
+      function computeAuditScore(rating, reviewCount, servicesCount, faqCount) {
+        return Math.max(45, Math.round((rating * 20 + Math.min(30, servicesCount * 4) + Math.min(20, faqCount * 3)) / 1.1));
+      }
+
+      function optimizeProfile(base) {
+        const boostedRating = Math.min(5, base.rating + 0.2);
+        const boostedReviews = base.reviewCount + Math.max(12, Math.round(base.reviewCount * 0.18));
+
+        const optimizedDescription = `${base.businessName} renforce sa presence locale avec une fiche claire, orientee conversion et preuve sociale. L'information est structuree pour repondre rapidement aux attentes des clients et augmenter les demandes entrantes.`;
+
+        const optimizedServices = Array.from(new Set([
+          ...base.services,
+          "Reponse rapide aux demandes",
+          "Mise a jour hebdomadaire des informations",
+          "Parcours client simplifie"
+        ])).slice(0, 8);
+
+        const optimizedFaqPairs = [
+          ...base.faqPairs,
+          { q: "Quels services sont les plus demandes ?", a: "Les services prioritaires sont mis en avant pour simplifier le choix des clients." },
+          { q: "Comment obtenir une reponse rapide ?", a: "Un canal de contact direct est affiche en tete de fiche." }
+        ].slice(0, 6);
+
+        return {
+          ...base,
+          rating: boostedRating,
+          reviewCount: boostedReviews,
+          description: optimizedDescription,
+          services: optimizedServices,
+          faqPairs: optimizedFaqPairs
+        };
+      }
 
       async function searchBusinessesByCity() {
         const city = document.getElementById("searchCity").value.trim();
@@ -823,21 +923,37 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
       }
 
       function generate() {
-        const businessName = document.getElementById("businessName").value.trim() || "Business Name";
-        const category = document.getElementById("category").value.trim() || "Category";
-        const city = document.getElementById("city").value.trim() || "City";
-        const rating = Math.max(1, Math.min(5, Number(document.getElementById("rating").value || 4.5)));
-        const reviewCount = Math.max(0, Number(document.getElementById("reviewCount").value || 0));
-        const address = document.getElementById("address").value.trim() || "Adresse à compléter";
-        const phone = document.getElementById("phone").value.trim() || "Téléphone à compléter";
-        const website = document.getElementById("website").value.trim() || "#";
-        const description = document.getElementById("description").value.trim() || "Description à compléter.";
-
-        const services = getLines("services");
-        const faqPairs = getLines("faq").map((line) => {
+        const baseProfile = {
+          businessName: document.getElementById("businessName").value.trim() || "Business Name",
+          category: document.getElementById("category").value.trim() || "Category",
+          city: document.getElementById("city").value.trim() || "City",
+          rating: Math.max(1, Math.min(5, Number(document.getElementById("rating").value || 4.5))),
+          reviewCount: Math.max(0, Number(document.getElementById("reviewCount").value || 0)),
+          address: document.getElementById("address").value.trim() || "Adresse à compléter",
+          phone: document.getElementById("phone").value.trim() || "Téléphone à compléter",
+          website: document.getElementById("website").value.trim() || "#",
+          description: document.getElementById("description").value.trim() || "Description à compléter.",
+          services: getLines("services"),
+          faqPairs: getLines("faq").map((line) => {
           const [q, a] = line.split("|");
           return { q: q ? q.trim() : "Question", a: a ? a.trim() : "Réponse à compléter" };
-        });
+          })
+        };
+
+        const displayProfile = optimizationMode ? optimizeProfile(baseProfile) : baseProfile;
+
+        const businessName = displayProfile.businessName;
+        const category = displayProfile.category;
+        const city = displayProfile.city;
+        const rating = displayProfile.rating;
+        const reviewCount = displayProfile.reviewCount;
+        const address = displayProfile.address;
+        const phone = displayProfile.phone;
+        const website = displayProfile.website;
+        const description = displayProfile.description;
+
+        const services = displayProfile.services;
+        const faqPairs = displayProfile.faqPairs;
 
         const inputImages = getLines("images");
         const fallback = [
@@ -859,8 +975,11 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
         const bars = buildRatingBreakdown(rating, reviewCount);
         const maxBar = Math.max(...bars.map((b) => b.count), 1);
 
-        const currentScore = Math.max(45, Math.round((rating * 20 + Math.min(30, services.length * 4) + Math.min(20, faqPairs.length * 3)) / 1.1));
+        const currentScore = computeAuditScore(baseProfile.rating, baseProfile.reviewCount, baseProfile.services.length, baseProfile.faqPairs.length);
         const optimizedScore = Math.min(100, currentScore + 12);
+        const displayedScore = optimizationMode
+          ? computeAuditScore(rating, reviewCount, services.length, faqPairs.length)
+          : currentScore;
 
         const imageCount = images.length;
         const hasWebsite = website && website !== "#";
@@ -893,7 +1012,28 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
               <a class="g-btn" href="${escapeHtml(website)}" target="_blank">Website</a>
               <a class="g-btn" href="#">Reserve</a>
             </div>
+            ${optimizationMode ? '<span class="opt-badge">Version optimisee active</span>' : ''}
           </div>
+
+          ${optimizationMode ? `
+          <div class="section">
+            <h3>Comparatif fiche actuelle vs optimisation</h3>
+            <div class="compare-grid">
+              <div class="compare-card">
+                <div class="compare-title">Fiche actuelle</div>
+                <div class="compare-value">${baseProfile.rating.toFixed(1)} · ${baseProfile.reviewCount} avis</div>
+                <div class="delta-neutral">Score: ${currentScore}</div>
+                <div class="meta-line" style="margin-top:6px">Services: ${baseProfile.services.length} · FAQ: ${baseProfile.faqPairs.length}</div>
+              </div>
+              <div class="compare-card">
+                <div class="compare-title">Version optimisee</div>
+                <div class="compare-value">${rating.toFixed(1)} · ${reviewCount} avis</div>
+                <div class="delta-up">Score: ${displayedScore} ( +${displayedScore - currentScore} )</div>
+                <div class="meta-line" style="margin-top:6px">Services: ${services.length} · FAQ: ${faqPairs.length}</div>
+              </div>
+            </div>
+          </div>
+          ` : ""}
 
           <div class="tabs">
             <button class="tab active">Présentation</button>
@@ -984,7 +1124,7 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
             <div class="audit">
               <div class="score-box">
                 <div class="score-label">Current score</div>
-                <div class="score-value">${currentScore}</div>
+                <div class="score-value">${displayedScore}</div>
               </div>
               <div class="score-box">
                 <div class="score-label">Potential optimized score</div>
@@ -1000,7 +1140,14 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
       }
 
       document.getElementById("searchBtn").addEventListener("click", searchBusinessesByCity);
-      document.getElementById("generateBtn").addEventListener("click", generate);
+      document.getElementById("generateBtn").addEventListener("click", () => {
+        optimizationMode = false;
+        generate();
+      });
+      document.getElementById("optimizeBtn").addEventListener("click", () => {
+        optimizationMode = true;
+        generate();
+      });
       generate();
     </script>
   </body>
