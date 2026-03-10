@@ -49,6 +49,12 @@ function toLegacyDemoSitePayload(payload: Record<string, unknown>): Record<strin
   delete legacy.final_render_data;
   delete legacy.ai_review;
   delete legacy.correction_pass;
+  delete legacy.site_quality_audit_json;
+  delete legacy.correction_plan_json;
+  delete legacy.corrected_site_json;
+  delete legacy.validation_status;
+  delete legacy.audit_score;
+  delete legacy.must_fix_flags;
   delete legacy.pipeline_run_json;
   return legacy;
 }
@@ -74,6 +80,12 @@ function mapPipelineArtifactsToPayload(artifacts?: SequentialPipelineArtifacts):
     final_render_data: artifacts.finalRenderData ?? null,
     ai_review: artifacts.aiReview ?? null,
     correction_pass: artifacts.correctionPass ?? null,
+    site_quality_audit_json: artifacts.siteQualityAudit ?? null,
+    correction_plan_json: artifacts.correctionPlan ?? null,
+    corrected_site_json: artifacts.correctedSite ?? null,
+    validation_status: artifacts.validationStatus ?? null,
+    audit_score: artifacts.auditScore ?? null,
+    must_fix_flags: artifacts.mustFixFlags ?? null,
     pipeline_run_json: artifacts.pipelineRun ?? null,
   };
 }
@@ -149,6 +161,17 @@ function mapDbDemoSiteRow(row: Record<string, unknown>): DemoSiteRecord {
     finalRenderDataJson: (row.final_render_data as DemoSiteRecord["finalRenderDataJson"]) ?? undefined,
     aiReviewJson: (row.ai_review as DemoSiteRecord["aiReviewJson"]) ?? undefined,
     correctionPassJson: (row.correction_pass as DemoSiteRecord["correctionPassJson"]) ?? undefined,
+    siteQualityAuditJson: (row.site_quality_audit_json as DemoSiteRecord["siteQualityAuditJson"]) ?? undefined,
+    correctionPlanJson: (row.correction_plan_json as DemoSiteRecord["correctionPlanJson"]) ?? undefined,
+    correctedSiteJson: (row.corrected_site_json as DemoSiteRecord["correctedSiteJson"]) ?? undefined,
+    validationStatus: (row.validation_status as DemoSiteRecord["validationStatus"]) ?? undefined,
+    auditScore:
+      typeof row.audit_score === "number"
+        ? row.audit_score
+        : typeof row.audit_score === "string"
+          ? Number(row.audit_score)
+          : undefined,
+    mustFixFlags: (row.must_fix_flags as DemoSiteRecord["mustFixFlags"]) ?? undefined,
     pipelineRunJson: (row.pipeline_run_json as DemoSiteRecord["pipelineRunJson"]) ?? undefined,
   };
 }
@@ -251,6 +274,7 @@ export async function saveDemoSiteContent(input: SaveDemoSiteContentInput): Prom
     source_content_json: validatedContent.sourceContentJson ?? null,
     source_assets_json: validatedContent.sourceAssetsJson ?? null,
     redesigned_site_json: validatedContent,
+    ...mapPipelineArtifactsToPayload(input.pipelineArtifacts),
     updated_at: new Date().toISOString()
   };
 

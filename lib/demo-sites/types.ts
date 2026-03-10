@@ -560,6 +560,12 @@ export interface SequentialPipelineArtifacts {
   finalRenderData?: Record<string, unknown>;
   aiReview?: Record<string, unknown>;
   correctionPass?: Record<string, unknown>;
+  siteQualityAudit?: Record<string, unknown>;
+  correctionPlan?: Record<string, unknown>;
+  correctedSite?: Record<string, unknown>;
+  validationStatus?: string;
+  auditScore?: number;
+  mustFixFlags?: string[];
   pipelineRun?: Record<string, unknown>;
 }
 
@@ -600,6 +606,12 @@ export interface DemoSiteRecord {
   finalRenderDataJson?: Record<string, unknown>;
   aiReviewJson?: Record<string, unknown>;
   correctionPassJson?: Record<string, unknown>;
+  siteQualityAuditJson?: Record<string, unknown>;
+  correctionPlanJson?: Record<string, unknown>;
+  correctedSiteJson?: Record<string, unknown>;
+  validationStatus?: string;
+  auditScore?: number;
+  mustFixFlags?: string[];
   pipelineRunJson?: Record<string, unknown>;
 }
 
@@ -616,6 +628,7 @@ export interface DemoSiteVersion {
 export interface SaveDemoSiteContentInput {
   demoSiteId: string;
   content: DemoSiteContent;
+  pipelineArtifacts?: SequentialPipelineArtifacts;
   changeNote?: string;
   createVersion?: boolean;
   actorUserId?: string;

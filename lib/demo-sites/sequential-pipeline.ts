@@ -25,6 +25,12 @@ import { generateAdaptiveDemoSiteJson } from "@/lib/demo-sites/redesign-intellig
 import { generateRedesignedHtmlFromSource } from "@/lib/demo-sites/source-redesign-pipeline";
 import { generateRestaurantTranslations } from "@/lib/demo-sites/multilingual";
 import { getFallbackImagesForSection, mergeSourceAndFallbackImages } from "@/lib/demo-sites/image-augmentation";
+import {
+  auditGeneratedSiteWithAI,
+  buildCorrectionPlanFromAudit,
+  correctGeneratedSiteWithAI,
+  validateSiteAfterCorrection,
+} from "@/lib/demo-sites/quality-review";
 
 export interface PipelineExecutionResult {
   content: DemoSiteContent;
@@ -253,18 +259,6 @@ interface FinalRenderDataOutput {
 interface RestaurantSemanticAudit {
   valid: boolean;
   failedChecks: string[];
-}
-
-interface AIReviewOutput {
-  reviewScore: number;
-  issues: Array<{ severity: "high" | "medium" | "low"; message: string; target: string }>;
-  improvements: string[];
-}
-
-interface CorrectionPassOutput {
-  correctedFinalContent: DemoSiteContent;
-  correctedRenderConfig: Record<string, unknown>;
-  correctionLog: string[];
 }
 
 function uniqueStrings(values: string[], limit = 60): string[] {
@@ -2248,77 +2242,6 @@ export async function generateFinalWebsite(input: {
   };
 }
 
-export async function reviewGeneratedWebsiteWithAI(input: {
-  final: FinalRenderDataOutput;
-  brandProfile: BrandProfile;
-  redesignPlan: RedesignPlanStep;
-}): Promise<AIReviewOutput> {
-  const fallback: AIReviewOutput = {
-    reviewScore: input.final.finalRenderData.generatedHtmlPreview?.html ? 82 : 70,
-    issues: [
-      ...(input.final.finalRenderData.generatedHtmlPreview?.html
-        ? []
-        : [{ severity: "medium" as const, message: "HTML preview missing; fallback renderer only.", target: "final_render" }]),
-      ...(input.final.content.sections.length < 5
-        ? [{ severity: "high" as const, message: "Too few sections for premium narrative flow.", target: "structure" }]
-        : []),
-    ],
-    improvements: ["strengthen hero CTA", "ensure visual rhythm on mobile"],
-  };
-
-  return runAiJson<AIReviewOutput>({
-    systemPrompt:
-      "You are a premium website QA reviewer. Return structured critique JSON: reviewScore, issues[{severity,message,target}], improvements.",
-    userPrompt: JSON.stringify({
-      sectionOrder: input.final.finalSiteStructure.sectionOrder,
-      hasHtmlPreview: input.final.previewPageData.hasHtmlPreview,
-      brandProfile: input.brandProfile,
-      redesignPlan: input.redesignPlan,
-    }),
-    fallback,
-  });
-}
-
-export async function refineGeneratedWebsiteWithAI(input: {
-  final: FinalRenderDataOutput;
-  review: AIReviewOutput;
-}): Promise<CorrectionPassOutput> {
-  const correctionLog: string[] = [];
-  const nextContent = JSON.parse(JSON.stringify(input.final.content)) as DemoSiteContent;
-
-  if (input.review.issues.some((issue) => issue.target === "structure")) {
-    const ctaIndex = nextContent.sections.findIndex((section) => section.type === "cta");
-    const contactIndex = nextContent.sections.findIndex((section) => section.type === "contact");
-    if (ctaIndex !== -1 && contactIndex !== -1 && ctaIndex > contactIndex) {
-      const [cta] = nextContent.sections.splice(ctaIndex, 1);
-      nextContent.sections.splice(contactIndex, 0, cta);
-      correctionLog.push("Moved CTA before contact to improve conversion flow.");
-    }
-  }
-
-  const heroSection = nextContent.sections.find((section) => section.type === "hero");
-  if (heroSection && heroSection.type === "hero") {
-    const previous = heroSection.content.primaryCta.label;
-    if (previous.length < 6 || /learn more|discover/i.test(previous)) {
-      heroSection.content.primaryCta.label = "Request your premium consultation";
-      correctionLog.push("Strengthened hero CTA wording.");
-    }
-  }
-
-  nextContent.sections = nextContent.sections
-    .sort((a, b) => a.order - b.order)
-    .map((section, index) => ({ ...section, order: index }));
-
-  return {
-    correctedFinalContent: validateDemoSiteContent(nextContent),
-    correctedRenderConfig: {
-      reviewScoreBeforeCorrection: input.review.reviewScore,
-      correctedAt: new Date().toISOString(),
-    },
-    correctionLog,
-  };
-}
-
 export async function runSequentialRedesignPipeline(params: {
   enriched: EnrichedCommerceLead;
   category: BusinessCategory;
@@ -2441,26 +2364,50 @@ export async function runSequentialRedesignPipeline(params: {
     }),
   );
 
-  const aiReview = await runStep(14, "ai_review", "AI review of generated website", () =>
-    reviewGeneratedWebsiteWithAI({
-      final: finalWebsite,
-      brandProfile,
-      redesignPlan,
+  const siteQualityAudit = await runStep(14, "ai_quality_audit", "AI quality audit of generated website", () =>
+    auditGeneratedSiteWithAI({
+      content: finalWebsite.content,
+      context: {
+        sourceData: reconstructed as unknown as Record<string, unknown>,
+        normalizedContent: normalizedContent as unknown as Record<string, unknown>,
+        multilingual: translatedContent as unknown as Record<string, unknown>,
+        category: params.category,
+      },
     }),
   );
 
-  const correctionPass = await runStep(15, "correction_pass", "AI correction pass", () =>
-    refineGeneratedWebsiteWithAI({
-      final: finalWebsite,
-      review: aiReview,
+  const correctionPlan = await runStep(15, "correction_plan", "Section-aware correction plan generation", async () =>
+    buildCorrectionPlanFromAudit({
+      content: finalWebsite.content,
+      audit: siteQualityAudit,
     }),
   );
 
-  const finalPreviewOutput = await runStep(16, "final_preview_output", "Final preview output", async () => ({
-    previewReady: Boolean(correctionPass.correctedFinalContent.generatedHtmlPreview?.html),
-    locales: translatedContent.supportedLocales,
-    correctedAt: new Date().toISOString(),
-  }));
+  const correctedSite = await runStep(16, "correction_pass", "AI correction pass", () =>
+    correctGeneratedSiteWithAI({
+      content: finalWebsite.content,
+      audit: siteQualityAudit,
+      correctionPlan,
+      context: {
+        sourceData: reconstructed as unknown as Record<string, unknown>,
+        normalizedContent: normalizedContent as unknown as Record<string, unknown>,
+        multilingual: translatedContent as unknown as Record<string, unknown>,
+        category: params.category,
+      },
+    }),
+  );
+
+  const validation = await runStep(17, "validation_status", "Final post-correction validation", () =>
+    validateSiteAfterCorrection({
+      correctedContent: correctedSite,
+      context: {
+        sourceData: reconstructed as unknown as Record<string, unknown>,
+        normalizedContent: normalizedContent as unknown as Record<string, unknown>,
+        multilingual: translatedContent as unknown as Record<string, unknown>,
+        category: params.category,
+      },
+    }),
+  );
 
   const artifacts: SequentialPipelineArtifacts = {
     crawlResult: crawl as unknown as Record<string, unknown>,
@@ -2480,18 +2427,32 @@ export async function runSequentialRedesignPipeline(params: {
     completedContent: completedContent as unknown as Record<string, unknown>,
     translatedContent: translatedContent as unknown as Record<string, unknown>,
     finalRenderData: finalWebsite as unknown as Record<string, unknown>,
-    aiReview: aiReview as unknown as Record<string, unknown>,
-    correctionPass: correctionPass as unknown as Record<string, unknown>,
+    aiReview: siteQualityAudit as unknown as Record<string, unknown>,
+    correctionPass: {
+      correctedAt: new Date().toISOString(),
+      status: validation.status,
+    },
+    siteQualityAudit: siteQualityAudit as unknown as Record<string, unknown>,
+    correctionPlan: correctionPlan as unknown as Record<string, unknown>,
+    correctedSite: correctedSite as unknown as Record<string, unknown>,
+    validationStatus: validation.status,
+    auditScore: siteQualityAudit.overallScore,
+    mustFixFlags: validation.mustFixFlags,
     pipelineRun: {
       executedAt: new Date().toISOString(),
       mode: "strict-sequential",
       stageLogs: logs,
-      finalPreviewOutput,
+      finalPreviewOutput: {
+        previewReady: validation.passed,
+        locales: translatedContent.supportedLocales,
+        correctedAt: new Date().toISOString(),
+        validationStatus: validation.status,
+      },
     },
   };
 
   return {
-    content: correctionPass.correctedFinalContent,
+    content: correctedSite,
     artifacts,
   };
 }
@@ -2511,6 +2472,9 @@ export interface SequentialPipelineRuntimeState {
   completedContent?: Record<string, unknown>;
   translatedContent?: Record<string, unknown>;
   finalWebsite?: Record<string, unknown>;
+  siteQualityAudit?: Record<string, unknown>;
+  correctionPlan?: Record<string, unknown>;
+  correctedSite?: Record<string, unknown>;
   aiReview?: Record<string, unknown>;
   correctionPass?: Record<string, unknown>;
   logs?: PipelineStageLog[];
@@ -2696,26 +2660,50 @@ export async function runSequentialRedesignPipelinePhase(params: {
     }),
   );
 
-  const aiReview = await runStep(14, "ai_review", "AI review of generated website", () =>
-    reviewGeneratedWebsiteWithAI({
-      final: finalWebsite,
-      brandProfile,
-      redesignPlan,
+  const siteQualityAudit = await runStep(14, "ai_quality_audit", "AI quality audit of generated website", () =>
+    auditGeneratedSiteWithAI({
+      content: finalWebsite.content,
+      context: {
+        sourceData: reconstructed as unknown as Record<string, unknown>,
+        normalizedContent: normalizedContent as unknown as Record<string, unknown>,
+        multilingual: translatedContent as unknown as Record<string, unknown>,
+        category: params.category,
+      },
     }),
   );
 
-  const correctionPass = await runStep(15, "correction_pass", "AI correction pass", () =>
-    refineGeneratedWebsiteWithAI({
-      final: finalWebsite,
-      review: aiReview,
+  const correctionPlan = await runStep(15, "correction_plan", "Section-aware correction plan generation", async () =>
+    buildCorrectionPlanFromAudit({
+      content: finalWebsite.content,
+      audit: siteQualityAudit,
     }),
   );
 
-  const finalPreviewOutput = await runStep(16, "final_preview_output", "Final preview output", async () => ({
-    previewReady: Boolean(correctionPass.correctedFinalContent.generatedHtmlPreview?.html),
-    locales: translatedContent.supportedLocales,
-    correctedAt: new Date().toISOString(),
-  }));
+  const correctedSite = await runStep(16, "correction_pass", "AI correction pass", () =>
+    correctGeneratedSiteWithAI({
+      content: finalWebsite.content,
+      audit: siteQualityAudit,
+      correctionPlan,
+      context: {
+        sourceData: reconstructed as unknown as Record<string, unknown>,
+        normalizedContent: normalizedContent as unknown as Record<string, unknown>,
+        multilingual: translatedContent as unknown as Record<string, unknown>,
+        category: params.category,
+      },
+    }),
+  );
+
+  const validation = await runStep(17, "validation_status", "Final post-correction validation", () =>
+    validateSiteAfterCorrection({
+      correctedContent: correctedSite,
+      context: {
+        sourceData: reconstructed as unknown as Record<string, unknown>,
+        normalizedContent: normalizedContent as unknown as Record<string, unknown>,
+        multilingual: translatedContent as unknown as Record<string, unknown>,
+        category: params.category,
+      },
+    }),
+  );
 
   const artifacts: SequentialPipelineArtifacts = {
     crawlResult: state.crawl,
@@ -2735,25 +2723,46 @@ export async function runSequentialRedesignPipelinePhase(params: {
     completedContent: completedContent as unknown as Record<string, unknown>,
     translatedContent: translatedContent as unknown as Record<string, unknown>,
     finalRenderData: finalWebsite as unknown as Record<string, unknown>,
-    aiReview: aiReview as unknown as Record<string, unknown>,
-    correctionPass: correctionPass as unknown as Record<string, unknown>,
+    aiReview: siteQualityAudit as unknown as Record<string, unknown>,
+    correctionPass: {
+      correctedAt: new Date().toISOString(),
+      status: validation.status,
+    },
+    siteQualityAudit: siteQualityAudit as unknown as Record<string, unknown>,
+    correctionPlan: correctionPlan as unknown as Record<string, unknown>,
+    correctedSite: correctedSite as unknown as Record<string, unknown>,
+    validationStatus: validation.status,
+    auditScore: siteQualityAudit.overallScore,
+    mustFixFlags: validation.mustFixFlags,
     pipelineRun: {
       executedAt: new Date().toISOString(),
       mode: "strict-sequential-phased",
       stageLogs: state.logs,
-      finalPreviewOutput,
+      finalPreviewOutput: {
+        previewReady: validation.passed,
+        locales: translatedContent.supportedLocales,
+        correctedAt: new Date().toISOString(),
+        validationStatus: validation.status,
+      },
     },
   };
 
   state.completedContent = completedContent as unknown as Record<string, unknown>;
   state.translatedContent = translatedContent as unknown as Record<string, unknown>;
   state.finalWebsite = finalWebsite as unknown as Record<string, unknown>;
-  state.aiReview = aiReview as unknown as Record<string, unknown>;
-  state.correctionPass = correctionPass as unknown as Record<string, unknown>;
+  state.siteQualityAudit = siteQualityAudit as unknown as Record<string, unknown>;
+  state.correctionPlan = correctionPlan as unknown as Record<string, unknown>;
+  state.correctedSite = correctedSite as unknown as Record<string, unknown>;
+  state.aiReview = siteQualityAudit as unknown as Record<string, unknown>;
+  state.correctionPass = {
+    correctedAt: new Date().toISOString(),
+    status: validation.status,
+    mustFixFlags: validation.mustFixFlags,
+  };
 
   return {
     state,
-    content: correctionPass.correctedFinalContent,
+    content: correctedSite,
     artifacts,
   };
 }

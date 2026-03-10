@@ -6,7 +6,7 @@ import type { DemoSection, DemoSiteContent, DemoSiteRecord, DemoSiteVersion } fr
 import { getHeroSection } from "@/lib/demo-sites/content";
 import { validateDemoSiteContent, getValidationErrorMessage } from "@/lib/demo-sites/validation";
 
-type EditorTab = "visual" | "json" | "ai" | "versions" | "pipeline";
+type EditorTab = "visual" | "json" | "ai" | "versions" | "pipeline" | "review";
 
 interface DemoSiteEditorProps {
   site: DemoSiteRecord;
@@ -38,13 +38,15 @@ function contentEquals(a: DemoSiteContent, b: DemoSiteContent): boolean {
 }
 
 export function DemoSiteEditor({ site, initialVersions }: DemoSiteEditorProps) {
+  const [siteSnapshot, setSiteSnapshot] = useState<DemoSiteRecord>(site);
   const [activeTab, setActiveTab] = useState<EditorTab>("visual");
-  const [currentContent, setCurrentContent] = useState<DemoSiteContent>(site.generatedContent);
-  const [draftContent, setDraftContent] = useState<DemoSiteContent>(deepClone(site.generatedContent));
-  const [jsonDraft, setJsonDraft] = useState<string>(JSON.stringify(site.generatedContent, null, 2));
+  const [currentContent, setCurrentContent] = useState<DemoSiteContent>(siteSnapshot.generatedContent);
+  const [draftContent, setDraftContent] = useState<DemoSiteContent>(deepClone(siteSnapshot.generatedContent));
+  const [jsonDraft, setJsonDraft] = useState<string>(JSON.stringify(siteSnapshot.generatedContent, null, 2));
   const [versions, setVersions] = useState<DemoSiteVersion[]>(initialVersions);
   const [isSaving, setIsSaving] = useState(false);
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+  const [isRunningReviewAction, setIsRunningReviewAction] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [createVersionOnSave, setCreateVersionOnSave] = useState(true);
@@ -57,24 +59,28 @@ export function DemoSiteEditor({ site, initialVersions }: DemoSiteEditorProps) {
   const pipelineStages = useMemo(
     () =>
       [
-        { step: 1, key: "crawl_result", label: "Source website crawl", data: site.crawlResultJson },
-        { step: 2, key: "rendered_dom", label: "Rendered DOM extraction", data: site.renderedDomJson },
-        { step: 3, key: "reconstructed_source", label: "Semantic source reconstruction", data: site.reconstructedSourceJson },
-        { step: 4, key: "raw_content", label: "Raw content extraction", data: site.rawContentJson },
-        { step: 5, key: "raw_images", label: "Raw image extraction", data: site.rawImagesJson },
-        { step: 6, key: "normalized_content", label: "AI content mapping", data: site.normalizedContentJson },
-        { step: 7, key: "selected_images", label: "AI image selection", data: site.selectedImagesJson },
-        { step: 8, key: "brand_profile", label: "AI brand analysis", data: site.brandProfileJson },
-        { step: 9, key: "source_quality_score", label: "AI source quality scoring", data: site.sourceQualityScoreJson },
-        { step: 10, key: "redesign_plan", label: "Adaptive redesign strategy", data: site.redesignPlanStepJson },
-        { step: 11, key: "completed_content", label: "Content completion", data: site.completedContentJson },
-        { step: 12, key: "translated_content", label: "Translation generation", data: site.translatedContentJson },
-        { step: 13, key: "final_render_data", label: "Final premium website generation", data: site.finalRenderDataJson },
-        { step: 14, key: "ai_review", label: "AI review", data: site.aiReviewJson },
-        { step: 15, key: "correction_pass", label: "AI correction pass", data: site.correctionPassJson },
+        { step: 1, key: "crawl_result", label: "Source website crawl", data: siteSnapshot.crawlResultJson },
+        { step: 2, key: "rendered_dom", label: "Rendered DOM extraction", data: siteSnapshot.renderedDomJson },
+        { step: 3, key: "reconstructed_source", label: "Semantic source reconstruction", data: siteSnapshot.reconstructedSourceJson },
+        { step: 4, key: "raw_content", label: "Raw content extraction", data: siteSnapshot.rawContentJson },
+        { step: 5, key: "raw_images", label: "Raw image extraction", data: siteSnapshot.rawImagesJson },
+        { step: 6, key: "normalized_content", label: "AI content mapping", data: siteSnapshot.normalizedContentJson },
+        { step: 7, key: "selected_images", label: "AI image selection", data: siteSnapshot.selectedImagesJson },
+        { step: 8, key: "brand_profile", label: "AI brand analysis", data: siteSnapshot.brandProfileJson },
+        { step: 9, key: "source_quality_score", label: "AI source quality scoring", data: siteSnapshot.sourceQualityScoreJson },
+        { step: 10, key: "redesign_plan", label: "Adaptive redesign strategy", data: siteSnapshot.redesignPlanStepJson },
+        { step: 11, key: "completed_content", label: "Content completion", data: siteSnapshot.completedContentJson },
+        { step: 12, key: "translated_content", label: "Translation generation", data: siteSnapshot.translatedContentJson },
+        { step: 13, key: "final_render_data", label: "Final premium website generation", data: siteSnapshot.finalRenderDataJson },
+        { step: 14, key: "site_quality_audit", label: "AI quality audit", data: siteSnapshot.siteQualityAuditJson ?? siteSnapshot.aiReviewJson },
+        { step: 15, key: "correction_plan", label: "Correction plan", data: siteSnapshot.correctionPlanJson },
+        { step: 16, key: "correction_pass", label: "AI correction pass", data: siteSnapshot.correctionPassJson },
+        { step: 17, key: "validation_status", label: "Validation status", data: { validationStatus: siteSnapshot.validationStatus, mustFixFlags: siteSnapshot.mustFixFlags } },
       ] as const,
-    [site],
+    [siteSnapshot],
   );
+
+  const reviewAudit = siteSnapshot.siteQualityAuditJson ?? siteSnapshot.aiReviewJson;
 
   useEffect(() => {
     const handler = (event: BeforeUnloadEvent) => {
@@ -98,6 +104,19 @@ export function DemoSiteEditor({ site, initialVersions }: DemoSiteEditorProps) {
     }
 
     setVersions(payload.versions ?? []);
+  }
+
+  async function refreshSiteSnapshot() {
+    const response = await fetch(`/api/demo-sites/${site.id}`, { method: "GET" });
+    const payload = await response.json();
+    if (!response.ok) {
+      throw new Error(payload.error ?? "Failed to refresh demo site.");
+    }
+
+    setSiteSnapshot(payload.site);
+    setCurrentContent(payload.site.generatedContent);
+    setDraftContent(deepClone(payload.site.generatedContent));
+    setJsonDraft(JSON.stringify(payload.site.generatedContent, null, 2));
   }
 
   async function persistContent(nextContent: DemoSiteContent, activityType: string) {
@@ -125,6 +144,7 @@ export function DemoSiteEditor({ site, initialVersions }: DemoSiteEditorProps) {
         throw new Error(payload.error ?? "Failed to save content.");
       }
 
+      setSiteSnapshot(payload.site);
       setCurrentContent(payload.site.generatedContent);
       setDraftContent(deepClone(payload.site.generatedContent));
       setJsonDraft(JSON.stringify(payload.site.generatedContent, null, 2));
@@ -351,6 +371,7 @@ export function DemoSiteEditor({ site, initialVersions }: DemoSiteEditorProps) {
         throw new Error(payload.error ?? "Failed to restore version.");
       }
 
+      setSiteSnapshot(payload.site);
       setCurrentContent(payload.site.generatedContent);
       setDraftContent(deepClone(payload.site.generatedContent));
       setJsonDraft(JSON.stringify(payload.site.generatedContent, null, 2));
@@ -360,6 +381,38 @@ export function DemoSiteEditor({ site, initialVersions }: DemoSiteEditorProps) {
       setErrorMessage(getValidationErrorMessage(error));
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function handleReviewAction(action: "rerun_audit" | "apply_correction" | "approve_corrected" | "reject_regenerate") {
+    setIsRunningReviewAction(true);
+    setErrorMessage(null);
+    setStatusMessage(null);
+
+    try {
+      const response = await fetch(`/api/demo-sites/${site.id}/review`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action }),
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Review action failed.");
+      }
+
+      setSiteSnapshot(payload.site);
+      setCurrentContent(payload.site.generatedContent);
+      setDraftContent(deepClone(payload.site.generatedContent));
+      setJsonDraft(JSON.stringify(payload.site.generatedContent, null, 2));
+      setStatusMessage(`Review action executed: ${action}`);
+      await refreshVersions();
+    } catch (error) {
+      setErrorMessage(getValidationErrorMessage(error));
+    } finally {
+      setIsRunningReviewAction(false);
     }
   }
 
@@ -396,6 +449,7 @@ export function DemoSiteEditor({ site, initialVersions }: DemoSiteEditorProps) {
             ["json", "JSON Edit"],
             ["ai", "AI Edit"],
             ["pipeline", "Pipeline Debug"],
+            ["review", "Review QA"],
             ["versions", "Version History"]
           ] as Array<[EditorTab, string]>).map(([id, label]) => (
             <button
@@ -652,7 +706,7 @@ export function DemoSiteEditor({ site, initialVersions }: DemoSiteEditorProps) {
             <article className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-soft">
               <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-600">Pipeline Run Log</h3>
               <pre className="mt-3 max-h-80 overflow-auto rounded-xl bg-zinc-950 p-3 text-xs text-zinc-100">
-                {JSON.stringify(site.pipelineRunJson ?? { status: "no pipeline metadata" }, null, 2)}
+                {JSON.stringify(siteSnapshot.pipelineRunJson ?? { status: "no pipeline metadata" }, null, 2)}
               </pre>
             </article>
 
@@ -669,6 +723,75 @@ export function DemoSiteEditor({ site, initialVersions }: DemoSiteEditorProps) {
                 </pre>
               </article>
             ))}
+          </section>
+        ) : null}
+
+        {activeTab === "review" ? (
+          <section className="space-y-4">
+            <article className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-soft">
+              <h2 className="font-[var(--font-heading)] text-3xl">Mandatory Review Panel</h2>
+              <p className="mt-1 text-sm text-zinc-600">Generated content must pass strict semantic and source-fidelity checks before client preview.</p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <div className="rounded-xl border border-zinc-200 p-3">
+                  <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Overall score</p>
+                  <p className="text-2xl font-semibold text-zinc-900">{String((reviewAudit as { overallScore?: number } | undefined)?.overallScore ?? siteSnapshot.auditScore ?? "n/a")}</p>
+                </div>
+                <div className="rounded-xl border border-zinc-200 p-3">
+                  <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Validation status</p>
+                  <p className="text-lg font-semibold text-zinc-900">{siteSnapshot.validationStatus ?? "unknown"}</p>
+                </div>
+                <div className="rounded-xl border border-zinc-200 p-3">
+                  <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Must-fix flags</p>
+                  <p className="text-lg font-semibold text-zinc-900">{siteSnapshot.mustFixFlags?.length ?? 0}</p>
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button type="button" onClick={() => handleReviewAction("rerun_audit")} disabled={isRunningReviewAction} className="rounded-full border border-zinc-300 bg-white px-4 py-2 text-sm font-semibold disabled:opacity-60">Re-run audit</button>
+                <button type="button" onClick={() => handleReviewAction("apply_correction")} disabled={isRunningReviewAction} className="rounded-full bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">Apply correction pass</button>
+                <button type="button" onClick={() => handleReviewAction("approve_corrected")} disabled={isRunningReviewAction} className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">Approve corrected site</button>
+                <button type="button" onClick={() => handleReviewAction("reject_regenerate")} disabled={isRunningReviewAction} className="rounded-full bg-rose-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">Reject and send back</button>
+                <button type="button" onClick={refreshSiteSnapshot} disabled={isRunningReviewAction} className="rounded-full border border-zinc-300 bg-white px-4 py-2 text-sm font-semibold disabled:opacity-60">Refresh</button>
+              </div>
+            </article>
+
+            <article className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-soft">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-600">Detected issues</h3>
+              <pre className="mt-3 max-h-80 overflow-auto rounded-xl bg-zinc-950 p-3 text-xs text-zinc-100">
+                {JSON.stringify((reviewAudit as { globalIssues?: string[]; missingCriticalFields?: string[] } | undefined) ?? { message: "No audit data" }, null, 2)}
+              </pre>
+            </article>
+
+            <article className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-soft">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-600">Section-by-section score and actions</h3>
+              <pre className="mt-3 max-h-96 overflow-auto rounded-xl bg-zinc-950 p-3 text-xs text-zinc-100">
+                {JSON.stringify(
+                  {
+                    sections: (reviewAudit as { sections?: unknown[] } | undefined)?.sections ?? [],
+                    correctionPlan: siteSnapshot.correctionPlanJson ?? { message: "No correction plan" },
+                    autoCorrected: siteSnapshot.correctionPassJson ?? { message: "No correction pass" },
+                    needsManualReview: siteSnapshot.mustFixFlags ?? [],
+                  },
+                  null,
+                  2,
+                )}
+              </pre>
+            </article>
+
+            <div className="grid gap-4 lg:grid-cols-2">
+              <article className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-soft">
+                <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-600">Before JSON</h3>
+                <pre className="mt-3 max-h-[28rem] overflow-auto rounded-xl bg-zinc-950 p-3 text-xs text-zinc-100">
+                  {JSON.stringify((siteSnapshot.finalRenderDataJson as { content?: unknown } | undefined)?.content ?? siteSnapshot.generatedContent, null, 2)}
+                </pre>
+              </article>
+              <article className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-soft">
+                <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-600">After JSON</h3>
+                <pre className="mt-3 max-h-[28rem] overflow-auto rounded-xl bg-zinc-950 p-3 text-xs text-zinc-100">
+                  {JSON.stringify(siteSnapshot.correctedSiteJson ?? siteSnapshot.generatedContent, null, 2)}
+                </pre>
+              </article>
+            </div>
           </section>
         ) : null}
       </div>
