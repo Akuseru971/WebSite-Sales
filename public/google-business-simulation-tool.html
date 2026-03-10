@@ -167,6 +167,40 @@
         cursor: pointer;
       }
 
+      .filter-row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-top: 8px;
+      }
+
+      .weak-badge {
+        display: inline-block;
+        margin-top: 4px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .weak-high {
+        background: #fce8e6;
+        color: #b3261e;
+        border: 1px solid #f2b8b5;
+      }
+
+      .weak-mid {
+        background: #fff8e8;
+        color: #8a4f00;
+        border: 1px solid #f0d58b;
+      }
+
+      .weak-low {
+        background: #e6f4ea;
+        color: #137333;
+        border: 1px solid #b7dfc3;
+      }
+
       .results-list {
         display: grid;
         gap: 8px;
@@ -501,6 +535,24 @@
               <option value="tout">Tout</option>
             </select>
           </div>
+          <div class="filter-row">
+            <div class="field" style="margin:0">
+              <label>Filtre faiblesses</label>
+              <select id="weaknessFilter">
+                <option value="all">Tous</option>
+                <option value="weak">Faibles uniquement</option>
+                <option value="very-weak">Tres faibles uniquement</option>
+              </select>
+            </div>
+            <div class="field" style="margin:0">
+              <label>Tri</label>
+              <select id="sortMode">
+                <option value="weakness">Priorite faiblesses</option>
+                <option value="rating">Meilleure note</option>
+                <option value="reviews">Plus d'avis</option>
+              </select>
+            </div>
+          </div>
           <button class="btn-search" id="searchBtn" type="button">Rechercher</button>
           <div class="status" id="searchStatus">Saisis une ville puis clique sur Rechercher.</div>
         </div>
@@ -629,17 +681,52 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
       }
 
       function businessCardHtml(business) {
+        const weaknessClass = business.weaknessScore >= 55
+          ? "weak-high"
+          : business.weaknessScore >= 35
+            ? "weak-mid"
+            : "weak-low";
+
         return `
           <div class="result-card">
             <h4>${escapeHtml(business.name || "Business")}</h4>
             <p>${escapeHtml(business.category || "local_business")} · ${escapeHtml(business.city || "")}</p>
             <p>${escapeHtml(business.address || "Adresse non disponible")}</p>
             <p>Note: ${Number(business.rating || 0).toFixed(1)} (${business.reviewCount || 0} avis)</p>
+            <span class="weak-badge ${weaknessClass}">Faiblesse: ${business.weaknessScore}/100</span>
             ${business.photoUrl ? `<img class="current-photo" src="${escapeHtml(business.photoUrl)}" alt="${escapeHtml(business.name || "Business")}" />` : ""}
             ${business.mapsUrl ? `<a class="open-google" href="${escapeHtml(business.mapsUrl)}" target="_blank">Voir la fiche Google</a>` : ""}
             <button class="small-btn pick-btn" data-id="${escapeHtml(business.id || "")}">Analyser</button>
           </div>
         `;
+      }
+
+      function enrichWithWeaknessScore(business) {
+        const rating = Number(business.rating || 0);
+        const reviewCount = Number(business.reviewCount || 0);
+        const photoCount = Array.isArray(business.photos) ? business.photos.length : 0;
+        const hasWebsite = !!business.website;
+        const hasPhone = !!business.phone;
+
+        let score = 0;
+        if (rating < 3.8) score += 35;
+        else if (rating < 4.2) score += 24;
+        else if (rating < 4.5) score += 12;
+
+        if (reviewCount < 20) score += 25;
+        else if (reviewCount < 80) score += 14;
+        else if (reviewCount < 150) score += 6;
+
+        if (photoCount < 3) score += 18;
+        else if (photoCount < 6) score += 8;
+
+        if (!hasWebsite) score += 14;
+        if (!hasPhone) score += 8;
+
+        return {
+          ...business,
+          weaknessScore: Math.max(0, Math.min(100, score))
+        };
       }
 
       let lastSearchBusinesses = [];
@@ -648,6 +735,8 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
       async function searchBusinessesByCity() {
         const city = document.getElementById("searchCity").value.trim();
         const type = document.getElementById("searchType").value;
+        const weaknessFilter = document.getElementById("weaknessFilter").value;
+        const sortMode = document.getElementById("sortMode").value;
         const status = document.getElementById("searchStatus");
         const resultsEl = document.getElementById("searchResults");
 
@@ -670,17 +759,37 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
             throw new Error(payload && payload.error ? payload.error : "Recherche impossible");
           }
 
-          lastSearchBusinesses = Array.isArray(payload.businesses) ? payload.businesses : [];
+          lastSearchBusinesses = Array.isArray(payload.businesses)
+            ? payload.businesses.map(enrichWithWeaknessScore)
+            : [];
 
-          if (!lastSearchBusinesses.length) {
+          let visibleBusinesses = [...lastSearchBusinesses];
+
+          if (weaknessFilter === "weak") {
+            visibleBusinesses = visibleBusinesses.filter((item) => item.weaknessScore >= 35);
+          }
+
+          if (weaknessFilter === "very-weak") {
+            visibleBusinesses = visibleBusinesses.filter((item) => item.weaknessScore >= 55);
+          }
+
+          if (sortMode === "weakness") {
+            visibleBusinesses.sort((a, b) => b.weaknessScore - a.weaknessScore);
+          } else if (sortMode === "rating") {
+            visibleBusinesses.sort((a, b) => Number(b.rating || 0) - Number(a.rating || 0));
+          } else if (sortMode === "reviews") {
+            visibleBusinesses.sort((a, b) => Number(b.reviewCount || 0) - Number(a.reviewCount || 0));
+          }
+
+          if (!visibleBusinesses.length) {
             status.textContent = "Aucun lieu trouve pour cette recherche.";
             status.className = "status error";
             resultsEl.innerHTML = "";
             return;
           }
 
-          resultsEl.innerHTML = lastSearchBusinesses.map(businessCardHtml).join("");
-          status.textContent = `${lastSearchBusinesses.length} lieu(x) trouve(s). Clique sur Analyser.`;
+          resultsEl.innerHTML = visibleBusinesses.map(businessCardHtml).join("");
+          status.textContent = `${visibleBusinesses.length} lieu(x) affiche(s) sur ${lastSearchBusinesses.length} trouve(s).`;
           status.className = "status success";
 
           document.querySelectorAll(".pick-btn").forEach((button) => {
