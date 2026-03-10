@@ -45,6 +45,31 @@ function buildPhotoUrl(photoName?: string): string {
   return `/api/photo?name=${encodeURIComponent(photoName)}&maxWidthPx=720`;
 }
 
+function formatGooglePlacesError(status: number, details: string): string {
+  let parsedMessage = "";
+
+  try {
+    const parsed = JSON.parse(details) as { error?: { message?: string } };
+    parsedMessage = parsed.error?.message || "";
+  } catch {
+    parsedMessage = details;
+  }
+
+  if (status === 403 || /PERMISSION_DENIED|has not been used|disabled/i.test(parsedMessage)) {
+    return "Google Places API n'est pas active pour ce projet. Active Places API (New) dans Google Cloud Console, verifie la facturation et attends 2-5 minutes.";
+  }
+
+  if (status === 401 || /API key|invalid/i.test(parsedMessage)) {
+    return "Cle API Google invalide ou non autorisee. Verifie GOOGLE_MAPS_API_KEY et les restrictions de cle.";
+  }
+
+  if (status === 429) {
+    return "Quota Google Places depasse. Reessaie plus tard ou augmente le quota.";
+  }
+
+  return `Google Places error ${status}. ${parsedMessage || "Erreur inconnue."}`;
+}
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -79,10 +104,7 @@ export async function GET(request: Request) {
 
     if (!response.ok) {
       const details = await response.text();
-      return NextResponse.json(
-        { error: `Google Places error ${response.status}: ${details}` },
-        { status: 500 },
-      );
+      return NextResponse.json({ error: formatGooglePlacesError(response.status, details) }, { status: 500 });
     }
 
     const payload = (await response.json()) as { places?: GooglePlaceItem[] };
@@ -105,6 +127,7 @@ export async function GET(request: Request) {
         website: place.websiteUri || "",
         photoUrl: photoNames[0] || "",
         photos: photoNames,
+        mapsUrl: place.id ? `https://www.google.com/maps/place/?q=place_id:${encodeURIComponent(place.id)}` : "",
         raw: place,
       };
     });

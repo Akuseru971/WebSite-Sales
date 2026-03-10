@@ -203,6 +203,56 @@
         cursor: pointer;
       }
 
+      .analysis-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+
+      .current-card,
+      .gap-card {
+        border: 1px solid #e3e7eb;
+        border-radius: 10px;
+        padding: 10px;
+        background: #fff;
+      }
+
+      .current-photo {
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        object-fit: cover;
+        border-radius: 8px;
+        border: 1px solid #d8dde3;
+        margin-bottom: 8px;
+      }
+
+      .map-frame {
+        width: 100%;
+        height: 180px;
+        border: 1px solid #d8dde3;
+        border-radius: 8px;
+        margin-top: 8px;
+      }
+
+      .gap-list {
+        margin: 0;
+        padding-left: 18px;
+        color: #3c4043;
+        line-height: 1.5;
+      }
+
+      .open-google {
+        display: inline-block;
+        margin-top: 8px;
+        padding: 7px 11px;
+        border-radius: 999px;
+        border: 1px solid #dadce0;
+        text-decoration: none;
+        color: #1f1f1f;
+        font-weight: 700;
+        font-size: 12px;
+      }
+
       .preview {
         padding: 16px;
       }
@@ -420,6 +470,10 @@
         .form-panel {
           position: static;
         }
+
+        .analysis-grid {
+          grid-template-columns: 1fr;
+        }
       }
     </style>
   </head>
@@ -544,6 +598,8 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
       function applyBusinessSelection(business) {
         if (!business) return;
 
+        selectedBusinessContext = business;
+
         setValue("businessName", business.name);
         setValue("category", business.category);
         setValue("city", business.city);
@@ -579,12 +635,15 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
             <p>${escapeHtml(business.category || "local_business")} · ${escapeHtml(business.city || "")}</p>
             <p>${escapeHtml(business.address || "Adresse non disponible")}</p>
             <p>Note: ${Number(business.rating || 0).toFixed(1)} (${business.reviewCount || 0} avis)</p>
+            ${business.photoUrl ? `<img class="current-photo" src="${escapeHtml(business.photoUrl)}" alt="${escapeHtml(business.name || "Business")}" />` : ""}
+            ${business.mapsUrl ? `<a class="open-google" href="${escapeHtml(business.mapsUrl)}" target="_blank">Voir la fiche Google</a>` : ""}
             <button class="small-btn pick-btn" data-id="${escapeHtml(business.id || "")}">Analyser</button>
           </div>
         `;
       }
 
       let lastSearchBusinesses = [];
+      let selectedBusinessContext = null;
 
       async function searchBusinessesByCity() {
         const city = document.getElementById("searchCity").value.trim();
@@ -694,6 +753,21 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
         const currentScore = Math.max(45, Math.round((rating * 20 + Math.min(30, services.length * 4) + Math.min(20, faqPairs.length * 3)) / 1.1));
         const optimizedScore = Math.min(100, currentScore + 12);
 
+        const imageCount = images.length;
+        const hasWebsite = website && website !== "#";
+        const hasPhone = !!phone && !/a completer/i.test(phone);
+        const gaps = [];
+        if (imageCount < 4) gaps.push("Ajouter plus de photos professionnelles pour rassurer et convertir.");
+        if (!hasWebsite) gaps.push("Ajouter un site web pour capter le trafic et les demandes entrantes.");
+        if (!hasPhone) gaps.push("Completer le numero de telephone pour augmenter les appels.");
+        if (reviewCount < 50) gaps.push("Encourager plus d'avis clients pour renforcer la preuve sociale.");
+        if (rating < 4.3) gaps.push("Mettre en place un plan qualite pour relever la note moyenne.");
+        if (!gaps.length) gaps.push("La fiche est deja solide. Focus sur frequences de publication et avis recents.");
+
+        const mapsUrl = selectedBusinessContext && selectedBusinessContext.mapsUrl
+          ? selectedBusinessContext.mapsUrl
+          : `https://www.google.com/maps/search/${encodeURIComponent(address)}`;
+
         const panel = document.getElementById("previewPanel");
         panel.innerHTML = `
           <div class="top-header">
@@ -717,6 +791,31 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
             <button class="tab">Avis</button>
             <button class="tab">Photos</button>
             <button class="tab">Menu</button>
+          </div>
+
+          <div class="section">
+            <h3>Fiche Google actuelle et analyse</h3>
+            <div class="analysis-grid">
+              <div class="current-card">
+                <div style="font-weight:700;margin-bottom:6px">Visuel actuel</div>
+                ${images[0] ? `<img class="current-photo" src="${escapeHtml(images[0])}" alt="Photo actuelle" />` : ""}
+                <div class="meta-line">${escapeHtml(address)}</div>
+                <div class="meta-line">Note actuelle: ${rating.toFixed(1)} · ${reviewCount} avis</div>
+                <a class="open-google" href="${escapeHtml(mapsUrl)}" target="_blank">Ouvrir la fiche Google actuelle</a>
+                <iframe
+                  class="map-frame"
+                  loading="lazy"
+                  referrerpolicy="no-referrer-when-downgrade"
+                  src="https://www.google.com/maps?q=${encodeURIComponent(address)}&output=embed"
+                ></iframe>
+              </div>
+              <div class="gap-card">
+                <div style="font-weight:700;margin-bottom:6px">Analyse des ecarts</div>
+                <ul class="gap-list">
+                  ${gaps.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}
+                </ul>
+              </div>
+            </div>
           </div>
 
           <div class="section">
