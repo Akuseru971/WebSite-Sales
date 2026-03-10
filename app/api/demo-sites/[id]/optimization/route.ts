@@ -7,7 +7,7 @@ import {
   type OptimizationSourceContext,
 } from "@/lib/demo-sites/optimization-phase";
 import { getDemoSiteById, saveDemoSiteContent } from "@/lib/demo-sites/repository";
-import { requireAuthenticatedUserId } from "@/lib/supabase/auth";
+import { getAuthenticatedUserIdOrNull } from "@/lib/supabase/auth";
 
 interface RouteContext {
   params: Promise<{ id: string }>;
@@ -54,7 +54,7 @@ function buildOptimizationContext(site: NonNullable<Awaited<ReturnType<typeof ge
 
 export async function POST(request: Request, context: RouteContext) {
   try {
-    const actorUserId = await requireAuthenticatedUserId();
+    const actorUserId = await getAuthenticatedUserIdOrNull();
     const { id } = await context.params;
     const body = (await request.json()) as { action?: OptimizationAction };
     const action = body.action;
@@ -91,7 +91,7 @@ export async function POST(request: Request, context: RouteContext) {
         demoSiteId: id,
         content: baseContent,
         createVersion: false,
-        actorUserId,
+        actorUserId: actorUserId ?? undefined,
         activityType: "demo_site_optimization_audit_run",
         changeNote: action === "run_audit" ? "Run optimization audit" : "Re-run optimization audit",
         pipelineArtifacts: {
@@ -145,7 +145,7 @@ export async function POST(request: Request, context: RouteContext) {
       demoSiteId: id,
       content: optimized.optimizedContent,
       createVersion: true,
-      actorUserId,
+      actorUserId: actorUserId ?? undefined,
       activityType: "demo_site_optimization_applied",
       changeNote: "Apply optimization fixes",
       pipelineArtifacts: {
