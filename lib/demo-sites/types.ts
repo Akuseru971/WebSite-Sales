@@ -566,6 +566,12 @@ export interface SequentialPipelineArtifacts {
   validationStatus?: string;
   auditScore?: number;
   mustFixFlags?: string[];
+  optimizationReport?: Record<string, unknown>;
+  optimizationPlan?: Record<string, unknown>;
+  optimizationStatus?: string;
+  optimizedSite?: Record<string, unknown>;
+  optimizedImageSelection?: Record<string, unknown>;
+  optimizationRunHistory?: Array<Record<string, unknown>>;
   pipelineRun?: Record<string, unknown>;
 }
 
@@ -612,6 +618,12 @@ export interface DemoSiteRecord {
   validationStatus?: string;
   auditScore?: number;
   mustFixFlags?: string[];
+  optimizationReportJson?: Record<string, unknown>;
+  optimizationPlanJson?: Record<string, unknown>;
+  optimizationStatus?: string;
+  optimizedSiteJson?: Record<string, unknown>;
+  optimizedImageSelectionJson?: Record<string, unknown>;
+  optimizationRunHistory?: Array<Record<string, unknown>>;
   pipelineRunJson?: Record<string, unknown>;
 }
 

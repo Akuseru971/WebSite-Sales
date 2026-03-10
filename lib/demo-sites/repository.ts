@@ -55,6 +55,12 @@ function toLegacyDemoSitePayload(payload: Record<string, unknown>): Record<strin
   delete legacy.validation_status;
   delete legacy.audit_score;
   delete legacy.must_fix_flags;
+  delete legacy.optimization_report_json;
+  delete legacy.optimization_plan_json;
+  delete legacy.optimization_status;
+  delete legacy.optimized_site_json;
+  delete legacy.optimized_image_selection_json;
+  delete legacy.optimization_run_history;
   delete legacy.pipeline_run_json;
   return legacy;
 }
@@ -86,6 +92,12 @@ function mapPipelineArtifactsToPayload(artifacts?: SequentialPipelineArtifacts):
     validation_status: artifacts.validationStatus ?? null,
     audit_score: artifacts.auditScore ?? null,
     must_fix_flags: artifacts.mustFixFlags ?? null,
+    optimization_report_json: artifacts.optimizationReport ?? null,
+    optimization_plan_json: artifacts.optimizationPlan ?? null,
+    optimization_status: artifacts.optimizationStatus ?? null,
+    optimized_site_json: artifacts.optimizedSite ?? null,
+    optimized_image_selection_json: artifacts.optimizedImageSelection ?? null,
+    optimization_run_history: artifacts.optimizationRunHistory ?? null,
     pipeline_run_json: artifacts.pipelineRun ?? null,
   };
 }
@@ -172,6 +184,12 @@ function mapDbDemoSiteRow(row: Record<string, unknown>): DemoSiteRecord {
           ? Number(row.audit_score)
           : undefined,
     mustFixFlags: (row.must_fix_flags as DemoSiteRecord["mustFixFlags"]) ?? undefined,
+    optimizationReportJson: (row.optimization_report_json as DemoSiteRecord["optimizationReportJson"]) ?? undefined,
+    optimizationPlanJson: (row.optimization_plan_json as DemoSiteRecord["optimizationPlanJson"]) ?? undefined,
+    optimizationStatus: (row.optimization_status as DemoSiteRecord["optimizationStatus"]) ?? undefined,
+    optimizedSiteJson: (row.optimized_site_json as DemoSiteRecord["optimizedSiteJson"]) ?? undefined,
+    optimizedImageSelectionJson: (row.optimized_image_selection_json as DemoSiteRecord["optimizedImageSelectionJson"]) ?? undefined,
+    optimizationRunHistory: (row.optimization_run_history as DemoSiteRecord["optimizationRunHistory"]) ?? undefined,
     pipelineRunJson: (row.pipeline_run_json as DemoSiteRecord["pipelineRunJson"]) ?? undefined,
   };
 }

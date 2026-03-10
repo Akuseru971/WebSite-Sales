@@ -6,7 +6,7 @@ import type { DemoSection, DemoSiteContent, DemoSiteRecord, DemoSiteVersion } fr
 import { getHeroSection } from "@/lib/demo-sites/content";
 import { validateDemoSiteContent, getValidationErrorMessage } from "@/lib/demo-sites/validation";
 
-type EditorTab = "visual" | "json" | "ai" | "versions" | "pipeline" | "review";
+type EditorTab = "visual" | "json" | "ai" | "versions" | "pipeline" | "review" | "optimization";
 
 interface DemoSiteEditorProps {
   site: DemoSiteRecord;
@@ -47,6 +47,7 @@ export function DemoSiteEditor({ site, initialVersions }: DemoSiteEditorProps) {
   const [isSaving, setIsSaving] = useState(false);
   const [isGeneratingAi, setIsGeneratingAi] = useState(false);
   const [isRunningReviewAction, setIsRunningReviewAction] = useState(false);
+  const [isRunningOptimizationAction, setIsRunningOptimizationAction] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [createVersionOnSave, setCreateVersionOnSave] = useState(true);
@@ -81,6 +82,13 @@ export function DemoSiteEditor({ site, initialVersions }: DemoSiteEditorProps) {
   );
 
   const reviewAudit = siteSnapshot.siteQualityAuditJson ?? siteSnapshot.aiReviewJson;
+  const optimizationReport = siteSnapshot.optimizationReportJson as
+    | {
+        overallScore?: number;
+        issues?: Array<{ id: string; category: string; severity: string; title: string; affectedSectionId?: string }>;
+        recommendedActions?: Array<{ actionType: string; targetSectionId?: string; notes: string }>;
+      }
+    | undefined;
 
   useEffect(() => {
     const handler = (event: BeforeUnloadEvent) => {
@@ -416,6 +424,38 @@ export function DemoSiteEditor({ site, initialVersions }: DemoSiteEditorProps) {
     }
   }
 
+  async function handleOptimizationAction(action: "run_audit" | "apply_fixes" | "rerun_optimization") {
+    setIsRunningOptimizationAction(true);
+    setErrorMessage(null);
+    setStatusMessage(null);
+
+    try {
+      const response = await fetch(`/api/demo-sites/${site.id}/optimization`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action }),
+      });
+
+      const payload = await response.json();
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Optimization action failed.");
+      }
+
+      setSiteSnapshot(payload.site);
+      setCurrentContent(payload.site.generatedContent);
+      setDraftContent(deepClone(payload.site.generatedContent));
+      setJsonDraft(JSON.stringify(payload.site.generatedContent, null, 2));
+      setStatusMessage(`Optimization action executed: ${action}`);
+      await refreshVersions();
+    } catch (error) {
+      setErrorMessage(getValidationErrorMessage(error));
+    } finally {
+      setIsRunningOptimizationAction(false);
+    }
+  }
+
   const hero = getHeroSection(draftContent);
   const testimonialsSection = getSection(draftContent, "testimonials");
   const gallerySection = getSection(draftContent, "gallery");
@@ -430,6 +470,14 @@ export function DemoSiteEditor({ site, initialVersions }: DemoSiteEditorProps) {
             <p className="text-sm text-zinc-600">Single source of truth: `generated_content_json`</p>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => handleOptimizationAction("run_audit")}
+              disabled={isRunningOptimizationAction}
+              className="rounded-full bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+            >
+              {isRunningOptimizationAction ? "Optimizing..." : "Run Optimization Phase"}
+            </button>
             <Link
               href={`/sites/${site.slug}`}
               target="_blank"
@@ -450,6 +498,7 @@ export function DemoSiteEditor({ site, initialVersions }: DemoSiteEditorProps) {
             ["ai", "AI Edit"],
             ["pipeline", "Pipeline Debug"],
             ["review", "Review QA"],
+            ["optimization", "Optimization"],
             ["versions", "Version History"]
           ] as Array<[EditorTab, string]>).map(([id, label]) => (
             <button
@@ -789,6 +838,78 @@ export function DemoSiteEditor({ site, initialVersions }: DemoSiteEditorProps) {
                 <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-600">After JSON</h3>
                 <pre className="mt-3 max-h-[28rem] overflow-auto rounded-xl bg-zinc-950 p-3 text-xs text-zinc-100">
                   {JSON.stringify(siteSnapshot.correctedSiteJson ?? siteSnapshot.generatedContent, null, 2)}
+                </pre>
+              </article>
+            </div>
+          </section>
+        ) : null}
+
+        {activeTab === "optimization" ? (
+          <section className="space-y-4">
+            <article className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-soft">
+              <h2 className="font-[var(--font-heading)] text-3xl">Optimization Phase</h2>
+              <p className="mt-1 text-sm text-zinc-600">Final polishing pass: compare source website and generated output, then apply surgical improvements only.</p>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-xl border border-zinc-200 p-3">
+                  <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Optimization status</p>
+                  <p className="text-lg font-semibold text-zinc-900">{siteSnapshot.optimizationStatus ?? "not_run"}</p>
+                </div>
+                <div className="rounded-xl border border-zinc-200 p-3">
+                  <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Optimization score</p>
+                  <p className="text-2xl font-semibold text-zinc-900">{String(optimizationReport?.overallScore ?? "n/a")}</p>
+                </div>
+                <div className="rounded-xl border border-zinc-200 p-3">
+                  <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Detected issues</p>
+                  <p className="text-lg font-semibold text-zinc-900">{optimizationReport?.issues?.length ?? 0}</p>
+                </div>
+                <div className="rounded-xl border border-zinc-200 p-3">
+                  <p className="text-xs uppercase tracking-[0.12em] text-zinc-500">Optimization runs</p>
+                  <p className="text-lg font-semibold text-zinc-900">{siteSnapshot.optimizationRunHistory?.length ?? 0}</p>
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button type="button" onClick={() => handleOptimizationAction("run_audit")} disabled={isRunningOptimizationAction} className="rounded-full bg-ink px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">Run Optimization Phase</button>
+                <button type="button" onClick={() => setStatusMessage("Optimization report is visible below.")} disabled={isRunningOptimizationAction} className="rounded-full border border-zinc-300 bg-white px-4 py-2 text-sm font-semibold disabled:opacity-60">View Optimization Report</button>
+                <button type="button" onClick={() => handleOptimizationAction("apply_fixes")} disabled={isRunningOptimizationAction} className="rounded-full bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">Apply Optimization Fixes</button>
+                <button type="button" onClick={() => handleOptimizationAction("rerun_optimization")} disabled={isRunningOptimizationAction} className="rounded-full bg-zinc-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">Re-run Optimization</button>
+              </div>
+            </article>
+
+            <article className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-soft">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-600">Optimization report</h3>
+              <pre className="mt-3 max-h-96 overflow-auto rounded-xl bg-zinc-950 p-3 text-xs text-zinc-100">
+                {JSON.stringify(siteSnapshot.optimizationReportJson ?? { message: "No optimization report yet." }, null, 2)}
+              </pre>
+            </article>
+
+            <article className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-soft">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-600">Optimization plan and improvements</h3>
+              <pre className="mt-3 max-h-96 overflow-auto rounded-xl bg-zinc-950 p-3 text-xs text-zinc-100">
+                {JSON.stringify(
+                  {
+                    plan: siteSnapshot.optimizationPlanJson ?? { message: "No optimization plan yet." },
+                    optimizedImages: siteSnapshot.optimizedImageSelectionJson ?? { message: "No optimized image selection yet." },
+                    runHistory: siteSnapshot.optimizationRunHistory ?? [],
+                  },
+                  null,
+                  2,
+                )}
+              </pre>
+            </article>
+
+            <div className="grid gap-4 lg:grid-cols-2">
+              <article className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-soft">
+                <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-600">Before optimization</h3>
+                <pre className="mt-3 max-h-[28rem] overflow-auto rounded-xl bg-zinc-950 p-3 text-xs text-zinc-100">
+                  {JSON.stringify(siteSnapshot.correctedSiteJson ?? siteSnapshot.generatedContent, null, 2)}
+                </pre>
+              </article>
+              <article className="rounded-2xl border border-zinc-200 bg-white p-5 shadow-soft">
+                <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-zinc-600">After optimization</h3>
+                <pre className="mt-3 max-h-[28rem] overflow-auto rounded-xl bg-zinc-950 p-3 text-xs text-zinc-100">
+                  {JSON.stringify(siteSnapshot.optimizedSiteJson ?? siteSnapshot.generatedContent, null, 2)}
                 </pre>
               </article>
             </div>
