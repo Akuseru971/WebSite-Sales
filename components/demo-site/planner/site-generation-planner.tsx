@@ -767,7 +767,7 @@ export function SiteGenerationPlanner() {
                         href={`${plan.createdSiteEditorUrl}?tab=optimization`}
                         className="rounded-full border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-800"
                       >
-                        Voir rapport d'amelioration
+                        Voir rapport d&apos;amelioration
                       </Link>
                     ) : null}
                   </div>
