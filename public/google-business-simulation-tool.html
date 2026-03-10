@@ -115,6 +115,38 @@
         cursor: pointer;
       }
 
+      .btn-analyze {
+        width: 100%;
+        border: 1px solid #dadce0;
+        border-radius: 999px;
+        padding: 10px 14px;
+        background: #fff;
+        color: var(--text);
+        font-size: 14px;
+        font-weight: 700;
+        cursor: pointer;
+      }
+
+      .btn-analyze:disabled {
+        opacity: 0.65;
+        cursor: wait;
+      }
+
+      .status {
+        min-height: 18px;
+        margin: 8px 0 2px;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .status.error {
+        color: #b3261e;
+      }
+
+      .status.success {
+        color: #137333;
+      }
+
       .preview {
         padding: 16px;
       }
@@ -343,6 +375,10 @@
         <h1>Simulateur Google Business</h1>
         <p class="hint">Saisis les informations puis clique sur Generate Page.</p>
 
+        <div class="field"><label>URL existante a analyser</label><input id="analyzeUrl" placeholder="https://www.exemple.com" /></div>
+        <button class="btn-analyze" id="analyzeBtn" type="button">Analyser la page reelle</button>
+        <div class="status" id="analyzeStatus"></div>
+
         <div class="field"><label>Business name</label><input id="businessName" value="Le Jardin Gourmand" /></div>
         <div class="field"><label>Category</label><input id="category" value="Restaurant" /></div>
         <div class="field"><label>City</label><input id="city" value="Lyon" /></div>
@@ -397,6 +433,78 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
         const half = rating - full >= 0.5 ? 1 : 0;
         const empty = 5 - full - half;
         return "★".repeat(full) + (half ? "☆" : "") + "☆".repeat(empty);
+      }
+
+      function setValue(id, value) {
+        const input = document.getElementById(id);
+        if (!input || !value) return;
+        input.value = String(value).trim();
+      }
+
+      function setTextLines(id, lines) {
+        if (!Array.isArray(lines) || lines.length === 0) return;
+        const input = document.getElementById(id);
+        if (!input) return;
+        input.value = lines
+          .map((line) => String(line || "").trim())
+          .filter(Boolean)
+          .join("\n");
+      }
+
+      function applyExtractedData(extracted) {
+        if (!extracted) return;
+
+        setValue("businessName", extracted.businessName);
+        setValue("category", extracted.category);
+        setValue("city", extracted.city);
+        setValue("address", extracted.address);
+        setValue("phone", extracted.phone);
+        setValue("website", extracted.website);
+        setValue("description", extracted.description);
+
+        setTextLines("services", extracted.services);
+        setTextLines("faq", extracted.faq);
+        setTextLines("images", extracted.images);
+      }
+
+      async function analyzeExistingPage() {
+        const urlInput = document.getElementById("analyzeUrl");
+        const analyzeBtn = document.getElementById("analyzeBtn");
+        const status = document.getElementById("analyzeStatus");
+        const url = urlInput.value.trim();
+
+        if (!url) {
+          status.textContent = "Saisis une URL valide avant de lancer l'analyse.";
+          status.className = "status error";
+          return;
+        }
+
+        analyzeBtn.disabled = true;
+        status.textContent = "Analyse en cours...";
+        status.className = "status";
+
+        try {
+          const response = await fetch("/api/google-business/analyze", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url })
+          });
+
+          const payload = await response.json();
+          if (!response.ok) {
+            throw new Error(payload && payload.error ? payload.error : "Erreur pendant l'analyse.");
+          }
+
+          applyExtractedData(payload.extracted);
+          generate();
+          status.textContent = "Analyse terminee. Formulaire mis a jour depuis la page reelle.";
+          status.className = "status success";
+        } catch (error) {
+          status.textContent = `Erreur: ${error instanceof Error ? error.message : "Analyse impossible."}`;
+          status.className = "status error";
+        } finally {
+          analyzeBtn.disabled = false;
+        }
       }
 
       function buildRatingBreakdown(rating, reviewCount) {
@@ -552,6 +660,7 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
         `;
       }
 
+      document.getElementById("analyzeBtn").addEventListener("click", analyzeExistingPage);
       document.getElementById("generateBtn").addEventListener("click", generate);
       generate();
     </script>
