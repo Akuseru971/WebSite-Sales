@@ -35,6 +35,35 @@ function setMessage(target, text, type) {
   target.className = `feedback ${type}`;
 }
 
+async function parseApiResponse(response) {
+  const raw = await response.text();
+  let payload = null;
+
+  try {
+    payload = raw ? JSON.parse(raw) : {};
+  } catch (_error) {
+    payload = null;
+  }
+
+  if (!response.ok) {
+    if (payload && payload.error) {
+      throw new Error(payload.error);
+    }
+
+    if (raw && raw.includes("<!doctype html>")) {
+      throw new Error("Endpoint API introuvable. Lance business-audit-app avec `npm start` puis ouvre http://localhost:3001.");
+    }
+
+    throw new Error(`Erreur HTTP ${response.status}`);
+  }
+
+  if (!payload) {
+    throw new Error("Réponse serveur invalide.");
+  }
+
+  return payload;
+}
+
 function initSearchPage() {
   const form = document.getElementById("searchForm");
   if (!form) return;
@@ -66,10 +95,7 @@ function initSearchPage() {
 
     try {
       const response = await fetch(`/api/business/${encodeURIComponent(id)}?city=${encodeURIComponent(lastCity || selected.city || "")}`);
-      const payload = await response.json();
-      if (!response.ok) {
-        throw new Error(payload.error || "Impossible de charger les détails business.");
-      }
+      const payload = await parseApiResponse(response);
 
       localStorage.setItem("selectedBusiness", JSON.stringify(payload.business || selected));
       window.location.href = "/preview.html";
@@ -115,11 +141,7 @@ function initSearchPage() {
 
     try {
       const response = await fetch(`/api/search?city=${encodeURIComponent(city)}&type=${encodeURIComponent(type)}`);
-      const payload = await response.json();
-
-      if (!response.ok) {
-        throw new Error(payload.error || "Erreur pendant la recherche.");
-      }
+      const payload = await parseApiResponse(response);
 
       lastResults = payload.businesses || [];
       resultCountEl.textContent = `${lastResults.length} résultat(s)`;
