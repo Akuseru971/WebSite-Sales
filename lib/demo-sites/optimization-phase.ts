@@ -223,6 +223,61 @@ function getImageMeta(url: string, selected: Array<Record<string, unknown>>): Re
   return selected.find((item) => asText(item.url) === url);
 }
 
+function asNumber(value: unknown): number {
+  if (typeof value === "number") {
+    return value;
+  }
+  if (typeof value === "string") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+  return 0;
+}
+
+function looksBlurry(value: string): boolean {
+  return /blur|blurry|tiny|thumb|thumbnail|small|lowres|low-res|pixelated|placeholder/i.test(value);
+}
+
+function imageWeaknessScore(params: {
+  meta?: Record<string, unknown>;
+  usage: ImageUsage;
+}): number {
+  const width = asNumber(params.meta?.width);
+  const height = asNumber(params.meta?.height);
+  const qualityScore = asNumber(params.meta?.qualityScore);
+  const url = asText(params.meta?.url);
+  const alt = asText(params.meta?.alt);
+  const displayed = params.usage.estimatedRenderedWidth;
+
+  let penalty = 0;
+  if (width > 0 && width < displayed * 0.72) penalty += 45;
+  if (width === 0 && params.usage.role === "hero") penalty += 35;
+  if (height > 0 && width > 0 && width / height > 3.2) penalty += 15;
+  if (qualityScore > 0 && qualityScore < 70) penalty += 28;
+  if (looksBlurry(url) || looksBlurry(alt)) penalty += 35;
+  if (/placeholder|unsplash|pexels|images\/photo/i.test(url) && params.usage.role === "hero") penalty += 18;
+
+  return penalty;
+}
+
+function scoreImageCandidate(image: Record<string, unknown>): number {
+  const url = asText(image.url);
+  const width = asNumber(image.width);
+  const height = asNumber(image.height);
+  const quality = asNumber(image.qualityScore);
+  const role = asText(image.role);
+
+  let score = 0;
+  score += Math.min(45, Math.floor(width / 80));
+  score += Math.min(25, Math.floor(height / 80));
+  score += quality > 0 ? Math.min(25, Math.floor(quality / 4)) : 8;
+  if (/hero|gallery|food|interior|room|property/i.test(role)) score += 8;
+  if (/placeholder|blur|tiny|thumb|thumbnail|lowres|low-res|pixelated/i.test(url)) score -= 40;
+  if (/unsplash|pexels|images\/photo/i.test(url)) score -= 12;
+
+  return score;
+}
+
 export function detectWeakImages(input: {
   content: DemoSiteContent;
   sourceContext: OptimizationSourceContext;
@@ -249,6 +304,7 @@ export function detectWeakImages(input: {
     const qualityScore = typeof meta?.qualityScore === "number" ? meta.qualityScore : 0;
     const url = usage.url;
     const isPotentialFallback = /placeholder|unsplash|pexels|images\/photo/i.test(url);
+    const weakness = imageWeaknessScore({ usage, meta });
 
     if (width > 0 && width < usage.estimatedRenderedWidth * 0.72) {
       flaggedImageUrls.push(url);
@@ -301,6 +357,24 @@ export function detectWeakImages(input: {
         actionType: "replace_image",
         targetSectionId: usage.sectionId,
         notes: "Promote strongest source image to hero role.",
+      });
+    }
+
+    if (weakness >= 40 && usage.role !== "hero") {
+      flaggedImageUrls.push(url);
+      issues.push({
+        id: `img-soft-${usage.sectionId}-${usage.field}`,
+        category: "image_quality",
+        severity: weakness >= 70 ? "high" : "medium",
+        title: "Image appears soft for its role",
+        description: "Displayed image quality/size suggests blur or softness risk.",
+        affectedSectionId: usage.sectionId,
+        recommendedFix: "Replace with a sharper source asset or reduce prominence.",
+      });
+      actions.push({
+        actionType: "replace_image",
+        targetSectionId: usage.sectionId,
+        notes: "Use sharper image candidate based on resolution and quality score.",
       });
     }
 
@@ -555,6 +629,49 @@ function replaceImageInSection(section: DemoSection, replacementUrl: string): De
   return cloned;
 }
 
+function replaceAllGenericPremiumCopy(value: unknown, businessName: string): unknown {
+  if (typeof value === "string") {
+    return replaceGenericPremiumCopy(value, businessName);
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => replaceAllGenericPremiumCopy(item, businessName));
+  }
+
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+      out[key] = replaceAllGenericPremiumCopy(item, businessName);
+    }
+    return out;
+  }
+
+  return value;
+}
+
+function buildImageCandidatePool(sourceContext: OptimizationSourceContext): string[] {
+  const selected = flattenSelectedImages(sourceContext.currentSelectedImages);
+  const sourceSelected = flattenSelectedImages(sourceContext.sourceSelectedImages);
+
+  const extracted = [
+    ...(Array.isArray(sourceContext.sourceExtractedContent?.heroImages)
+      ? (sourceContext.sourceExtractedContent?.heroImages as unknown[])
+      : []),
+    ...(Array.isArray(sourceContext.sourceExtractedContent?.galleryImages)
+      ? (sourceContext.sourceExtractedContent?.galleryImages as unknown[])
+      : []),
+  ]
+    .map((value) => asText(value))
+    .filter(Boolean)
+    .map((url) => ({ url, width: 1600, height: 1000, qualityScore: 75, role: "source" }));
+
+  const combined = [...sourceSelected, ...selected, ...extracted]
+    .filter((item) => asText(item.url).length > 0)
+    .sort((a, b) => scoreImageCandidate(b) - scoreImageCandidate(a));
+
+  return unique(combined.map((item) => asText(item.url))).filter((url) => !looksBlurry(url));
+}
+
 export function replaceWeakImages(input: {
   content: DemoSiteContent;
   plan: OptimizationPlan;
@@ -562,17 +679,7 @@ export function replaceWeakImages(input: {
 }): { content: DemoSiteContent; optimizedImageSelection: Array<Record<string, unknown>>; applied: string[] } {
   const next = JSON.parse(JSON.stringify(input.content)) as DemoSiteContent;
   const selected = flattenSelectedImages(input.sourceContext.currentSelectedImages);
-  const sourceImagePool = unique([
-    ...((input.sourceContext.sourceSelectedImages ?? []).map((item) => asText(item.url))),
-    ...((Array.isArray(input.sourceContext.sourceExtractedContent?.heroImages)
-      ? (input.sourceContext.sourceExtractedContent?.heroImages as unknown[])
-      : [])
-      .map((value) => asText(value))),
-    ...((Array.isArray(input.sourceContext.sourceExtractedContent?.galleryImages)
-      ? (input.sourceContext.sourceExtractedContent?.galleryImages as unknown[])
-      : [])
-      .map((value) => asText(value))),
-  ]);
+  const sourceImagePool = buildImageCandidatePool(input.sourceContext);
 
   const applied: string[] = [];
   if (sourceImagePool.length === 0) {
@@ -591,6 +698,18 @@ export function replaceWeakImages(input: {
     const replaced = replaceImageInSection(section, replacement);
     Object.assign(section, replaced);
     applied.push(`image_replaced:${section.id}`);
+  }
+
+  const hero = next.sections.find((section) => section.type === "hero");
+  if (hero) {
+    const currentHero = asText((hero.content as unknown as Record<string, unknown>).image);
+    if (!currentHero || looksBlurry(currentHero)) {
+      const best = sourceImagePool[0];
+      if (best) {
+        Object.assign(hero, replaceImageInSection(hero, best));
+        applied.push(`hero_replaced:${hero.id}`);
+      }
+    }
   }
 
   const optimizedImageSelection = [
@@ -633,6 +752,10 @@ export function regenerateWeakSectionsOnly(input: {
     );
 
     const updated = { ...section, order: index } as DemoSection;
+
+    // Always remove generic filler patterns, not only rewritten sections.
+    updated.content = replaceAllGenericPremiumCopy(updated.content, next.businessInfo.name) as typeof updated.content;
+
     if (shouldRewrite) {
       const content = updated.content as unknown as Record<string, unknown>;
       Object.keys(content).forEach((key) => {
@@ -658,6 +781,37 @@ export function regenerateWeakSectionsOnly(input: {
 
     return updated;
   });
+
+  const source = input.sourceContext.sourceExtractedContent ?? {};
+  const contactSection = next.sections.find((section) => section.type === "contact");
+  if (contactSection) {
+    const contact = contactSection.content as unknown as Record<string, unknown>;
+    if (!asText(contact.address)) {
+      contact.address = asText(source.address) || next.businessInfo.address || asText(source.fullAddress);
+      if (asText(contact.address)) {
+        applied.push(`contact_injected:address:${contactSection.id}`);
+      }
+    }
+    if (!asText(contact.phone)) {
+      contact.phone = asText(source.phone) || next.businessInfo.phone;
+      if (asText(contact.phone)) {
+        applied.push(`contact_injected:phone:${contactSection.id}`);
+      }
+    }
+    if (!asText(contact.email)) {
+      contact.email = asText(source.email) || next.businessInfo.email;
+      if (asText(contact.email)) {
+        applied.push(`contact_injected:email:${contactSection.id}`);
+      }
+    }
+    const hours = Array.isArray(contact.hours) ? (contact.hours as unknown[]) : [];
+    if (hours.length === 0 && Array.isArray(source.openingHours)) {
+      contact.hours = (source.openingHours as unknown[]).map((value) => asText(value)).filter(Boolean).slice(0, 7);
+      if (Array.isArray(contact.hours) && contact.hours.length > 0) {
+        applied.push(`contact_injected:hours:${contactSection.id}`);
+      }
+    }
+  }
 
   const shouldReorder = input.plan.actionQueue.some((action) => action.actionType === "reorder_sections");
   if (shouldReorder) {

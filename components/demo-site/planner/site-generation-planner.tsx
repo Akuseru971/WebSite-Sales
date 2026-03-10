@@ -753,6 +753,23 @@ export function SiteGenerationPlanner() {
                         {plan.optimizationStatus === "running" ? "Upgrade en cours..." : "Upgrade (amelioration)"}
                       </button>
                     ) : null}
+                    {plan.createdSiteUrl && plan.optimizationStatus === "applied" ? (
+                      <Link
+                        href={plan.createdSiteUrl}
+                        target="_blank"
+                        className="rounded-full border border-indigo-300 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700"
+                      >
+                        Voir resultat ameliore
+                      </Link>
+                    ) : null}
+                    {plan.createdSiteEditorUrl && (plan.optimizationStatus === "audited" || plan.optimizationStatus === "applied") ? (
+                      <Link
+                        href={`${plan.createdSiteEditorUrl}?tab=optimization`}
+                        className="rounded-full border border-zinc-300 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-800"
+                      >
+                        Voir rapport d'amelioration
+                      </Link>
+                    ) : null}
                   </div>
                 </div>
               ))

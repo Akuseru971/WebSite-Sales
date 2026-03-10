@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   applyOptimizationFixes,
+  buildOptimizationPlan,
   optimizationPlanSchema,
   optimizationReportSchema,
   runOptimizationAudit,
@@ -130,31 +131,103 @@ export async function POST(request: Request, context: RouteContext) {
       plan,
     });
 
+    let finalOptimizedContent = optimized.optimizedContent;
+    let finalOptimizedImageSelection = optimized.optimizedImageSelection;
+    let finalAppliedActions = [...optimized.appliedActions];
+    let finalUnchangedSectionIds = [...optimized.unchangedSectionIds];
+
+    let afterAudit = await runOptimizationAudit({
+      content: finalOptimizedContent,
+      sourceContext: {
+        ...sourceContext,
+        currentSelectedImages: finalOptimizedImageSelection,
+      },
+    });
+
+    const beforeScore = report.overallScore;
+    if (afterAudit.report.overallScore <= beforeScore) {
+      const escalatedBasePlan = buildOptimizationPlan({
+        content: finalOptimizedContent,
+        report: afterAudit.report,
+        weakImageUrls: afterAudit.plan.weakImageUrls,
+      });
+
+      const escalatedActions = [
+        ...escalatedBasePlan.actionQueue,
+        ...afterAudit.report.issues
+          .filter((issue) => issue.severity === "critical" || issue.severity === "high")
+          .flatMap((issue) => [
+            { actionType: "replace_image" as const, targetSectionId: issue.affectedSectionId, notes: "Escalation pass: replace weak visual." },
+            { actionType: "rewrite_copy" as const, targetSectionId: issue.affectedSectionId, notes: "Escalation pass: rewrite for coherence and viability." },
+            { actionType: "adjust_spacing" as const, targetSectionId: issue.affectedSectionId, notes: "Escalation pass: tighten layout composition." },
+          ]),
+      ].filter((action) => action.targetSectionId || action.actionType !== "adjust_spacing");
+
+      const dedupedActions = escalatedActions.filter((action, index, self) =>
+        self.findIndex((candidate) =>
+          candidate.actionType === action.actionType && candidate.targetSectionId === action.targetSectionId,
+        ) === index,
+      );
+
+      const escalatedPlan = {
+        ...escalatedBasePlan,
+        actionQueue: dedupedActions,
+      };
+
+      const escalation = await applyOptimizationFixes({
+        content: finalOptimizedContent,
+        sourceContext: {
+          ...sourceContext,
+          currentSelectedImages: finalOptimizedImageSelection,
+        },
+        report: afterAudit.report,
+        plan: escalatedPlan,
+      });
+
+      const escalationAudit = await runOptimizationAudit({
+        content: escalation.optimizedContent,
+        sourceContext: {
+          ...sourceContext,
+          currentSelectedImages: escalation.optimizedImageSelection,
+        },
+      });
+
+      if (escalationAudit.report.overallScore >= afterAudit.report.overallScore) {
+        finalOptimizedContent = escalation.optimizedContent;
+        finalOptimizedImageSelection = escalation.optimizedImageSelection;
+        finalAppliedActions = [...finalAppliedActions, ...escalation.appliedActions];
+        finalUnchangedSectionIds = escalation.unchangedSectionIds;
+        afterAudit = escalationAudit;
+      }
+    }
+
     const history = [
       ...(site.optimizationRunHistory ?? []),
       {
         runAt: new Date().toISOString(),
         action,
-        overallScore: report.overallScore,
-        issueCount: report.issues.length,
-        appliedActions: optimized.appliedActions.length,
+        scoreBefore: report.overallScore,
+        scoreAfter: afterAudit.report.overallScore,
+        issueCountBefore: report.issues.length,
+        issueCountAfter: afterAudit.report.issues.length,
+        appliedActions: finalAppliedActions.length,
       },
     ];
 
     const updated = await saveDemoSiteContent({
       demoSiteId: id,
-      content: optimized.optimizedContent,
+      content: finalOptimizedContent,
       createVersion: true,
       actorUserId: actorUserId ?? undefined,
       activityType: "demo_site_optimization_applied",
       changeNote: "Apply optimization fixes",
       pipelineArtifacts: {
-        optimizationReport: report as unknown as Record<string, unknown>,
-        optimizationPlan: plan as unknown as Record<string, unknown>,
+        optimizationReport: afterAudit.report as unknown as Record<string, unknown>,
+        optimizationPlan: afterAudit.plan as unknown as Record<string, unknown>,
         optimizationStatus: "applied",
-        optimizedSite: optimized.optimizedContent as unknown as Record<string, unknown>,
+        optimizedSite: finalOptimizedContent as unknown as Record<string, unknown>,
         optimizedImageSelection: {
-          selectedImages: optimized.optimizedImageSelection,
+          selectedImages: finalOptimizedImageSelection,
         },
         optimizationRunHistory: history,
       },
@@ -164,10 +237,10 @@ export async function POST(request: Request, context: RouteContext) {
       site: updated,
       optimization: {
         status: "applied",
-        report,
-        plan,
-        appliedActions: optimized.appliedActions,
-        unchangedSectionIds: optimized.unchangedSectionIds,
+        report: afterAudit.report,
+        plan: afterAudit.plan,
+        appliedActions: finalAppliedActions,
+        unchangedSectionIds: finalUnchangedSectionIds,
       },
     });
   } catch (error) {

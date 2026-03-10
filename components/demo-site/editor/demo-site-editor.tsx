@@ -91,6 +91,17 @@ export function DemoSiteEditor({ site, initialVersions }: DemoSiteEditorProps) {
     | undefined;
 
   useEffect(() => {
+    const query = new URLSearchParams(window.location.search);
+    const requestedTab = query.get("tab");
+    if (requestedTab === "optimization") {
+      setActiveTab("optimization");
+    }
+    if (requestedTab === "review") {
+      setActiveTab("review");
+    }
+  }, []);
+
+  useEffect(() => {
     const handler = (event: BeforeUnloadEvent) => {
       if (!isDirty) {
         return;
