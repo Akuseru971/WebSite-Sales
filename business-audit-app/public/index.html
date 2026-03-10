@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Business Audit - Recherche</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="search-page">
+      <section class="search-card">
+        <h1>Audit Local Business</h1>
+        <p>Recherche une entreprise par ville et categorie, puis genere un apercu optimise (une fiche a la fois).</p>
+
+        <form id="searchForm" class="search-form">
+          <div class="field">
+            <label for="city">Ville</label>
+            <input id="city" name="city" placeholder="Ex: Lyon" required />
+          </div>
+          <div class="field">
+            <label for="category">Categorie</label>
+            <input id="category" name="category" placeholder="Ex: Restaurant" required />
+          </div>
+          <button type="submit" class="primary-btn">Search</button>
+        </form>
+      </section>
+
+      <section class="results-wrap">
+        <div class="results-head">
+          <h2>Resultats</h2>
+          <span id="resultCount">0 trouve</span>
+        </div>
+        <div id="results" class="results-grid"></div>
+      </section>
+    </main>
+
+    <script src="/search.js"></script>
+  </body>
+</html>
