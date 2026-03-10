@@ -1,39 +1,81 @@
-# Business Audit App (Express + Vanilla JS)
+# Real Local Business Prospecting App
 
-Mini application locale pour rechercher des entreprises (mock) puis generer un apercu d'optimisation Google Business fiche par fiche.
+Prototype V1 en Node.js + Express + HTML/CSS/JS vanilla, branché sur Google Places API (New) pour récupérer des établissements réels.
 
-## Stack
+## Packages à installer
 
-- Node.js
-- Express
-- HTML / CSS / JavaScript vanilla
+- express
+- dotenv
 
-## Lancer en local
-
-1. Installer les dependances:
+Commande exacte:
 
 ```bash
 cd business-audit-app
-npm install
+npm install express dotenv
 ```
 
-2. Demarrer le serveur:
+## Configuration
+
+1. Copier le fichier d'exemple:
+
+```bash
+cp .env.example .env
+```
+
+2. Renseigner la clé API dans `.env`:
+
+```env
+GOOGLE_MAPS_API_KEY=your_google_maps_api_key_here
+PORT=3001
+```
+
+## Lancement
 
 ```bash
 npm start
 ```
 
-3. Ouvrir dans le navigateur:
+Puis ouvrir:
 
 ```text
 http://localhost:3001
 ```
 
-## Structure
+## Endpoints backend
 
-- `server.js`: backend Express + route API `GET /api/search?city=Marseille&type=restaurant`.
-- `services/businessSearch.js`: service mock `searchBusinesses(city, type)` remplaçable par Google Places ou Apify.
-- `public/index.html`: interface de recherche + liste des resultats.
-- `public/preview.html`: page preview optimisee (simulation).
-- `public/app.js`: logique frontend (recherche, passer, analyser, preview, generation optimisee).
-- `public/style.css`: styles globaux.
+- `GET /api/search?city=Marseille&type=restaurant`
+- `GET /api/business/:id?city=Marseille`
+- `GET /api/photo?name=places/.../photos/...&maxWidthPx=600`
+
+## Fetch frontend vers backend
+
+Recherche:
+
+```javascript
+fetch(`/api/search?city=${encodeURIComponent(city)}&type=${encodeURIComponent(type)}`)
+```
+
+Détails business (au clic Analyser):
+
+```javascript
+fetch(`/api/business/${encodeURIComponent(id)}?city=${encodeURIComponent(city)}`)
+```
+
+## Structure projet
+
+- `server.js`
+- `.env`
+- `.env.example`
+- `public/index.html`
+- `public/preview.html`
+- `public/style.css`
+- `public/app.js`
+- `public/preview.js`
+- `services/googlePlaces.js`
+
+## Notes fonctionnelles
+
+- Données réelles uniquement (Google Places API New), aucun mock.
+- Recherche par ville + type de commerce.
+- Workflow one-by-one: Passer ou Analyser chaque carte.
+- La preview affiche toujours le disclaimer obligatoire en haut.
