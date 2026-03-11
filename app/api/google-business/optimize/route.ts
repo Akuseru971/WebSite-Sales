@@ -31,6 +31,10 @@ const aiOutputSchema = z.object({
   projectedRating: z.number().min(1).max(5),
   projectedReviewCount: z.number().int().min(0),
   priorityActions: z.array(z.string().min(3)).min(3).max(8),
+  primaryCta: z.string().min(3).max(60),
+  secondaryCta: z.string().min(3).max(60),
+  responseTone: z.string().min(3).max(120),
+  reviewReplyTemplate: z.string().min(20).max(400),
 });
 
 type ApiProfile = {
@@ -48,6 +52,10 @@ type ApiProfile = {
   images: string[];
   mapsUrl: string;
   priorityActions?: string[];
+  primaryCta?: string;
+  secondaryCta?: string;
+  responseTone?: string;
+  reviewReplyTemplate?: string;
 };
 
 interface GooglePhoto {
@@ -100,9 +108,78 @@ function defaultOptimizedDescription(name: string, city: string): string {
   return `${name} presente une fiche plus claire et orientee conversion locale a ${city}. Les informations essentielles, les visuels reels et les points de confiance sont renforces pour augmenter les contacts entrants.`;
 }
 
+function buildCategoryPlaybook(rawCategory: string): {
+  primaryCta: string;
+  secondaryCta: string;
+  serviceFocus: string[];
+  faqFocus: string[];
+  responseTone: string;
+} {
+  const category = rawCategory.toLowerCase();
+
+  if (/restaurant|food|cafe|bistro|pizza/.test(category)) {
+    return {
+      primaryCta: "Reserver une table",
+      secondaryCta: "Commander",
+      serviceFocus: ["reservation", "vente a emporter", "horaires de service"],
+      faqFocus: ["allergenes", "menu", "reservation"],
+      responseTone: "chaleureux, rapide, orientee hospitalite",
+    };
+  }
+
+  if (/pharmacy|pharmacie|medical|dentist|doctor/.test(category)) {
+    return {
+      primaryCta: "Appeler la pharmacie",
+      secondaryCta: "Voir l'itineraire",
+      serviceFocus: ["conseil", "disponibilite", "acces"],
+      faqFocus: ["horaires", "ordonnance", "services de garde"],
+      responseTone: "rassurant, clair, professionnel",
+    };
+  }
+
+  if (/hotel|hostel|lodging/.test(category)) {
+    return {
+      primaryCta: "Verifier les disponibilites",
+      secondaryCta: "Reserver maintenant",
+      serviceFocus: ["reservation", "equipements", "localisation"],
+      faqFocus: ["arrivee depart", "parking", "services inclus"],
+      responseTone: "premium, accueillant, orientee sejour",
+    };
+  }
+
+  if (/garage|car|repair|auto/.test(category)) {
+    return {
+      primaryCta: "Demander un devis",
+      secondaryCta: "Prendre rendez-vous",
+      serviceFocus: ["diagnostic", "devis", "delais"],
+      faqFocus: ["tarifs", "prise en charge", "rendez-vous"],
+      responseTone: "fiable, transparent, orientee resultat",
+    };
+  }
+
+  if (/coiffeur|hair|beauty|salon/.test(category)) {
+    return {
+      primaryCta: "Prendre rendez-vous",
+      secondaryCta: "Appeler le salon",
+      serviceFocus: ["rendez-vous", "prestations", "resultats"],
+      faqFocus: ["tarifs", "disponibilites", "conseils"],
+      responseTone: "soigne, bienveillant, orientee experience",
+    };
+  }
+
+  return {
+    primaryCta: "Appeler maintenant",
+    secondaryCta: "Demander des informations",
+    serviceFocus: ["contact rapide", "informations claires", "disponibilites"],
+    faqFocus: ["horaires", "contact", "prestations"],
+    responseTone: "professionnel, clair, orientee aide",
+  };
+}
+
 function buildFallbackOptimized(current: ApiProfile): ApiProfile {
   const projectedRating = Math.min(5, Number((current.rating + 0.2).toFixed(1)));
   const projectedReviewCount = current.reviewCount + Math.max(12, Math.round(current.reviewCount * 0.18));
+  const playbook = buildCategoryPlaybook(current.category);
 
   const services = uniqueStrings([
     ...current.services,
@@ -135,6 +212,10 @@ function buildFallbackOptimized(current: ApiProfile): ApiProfile {
       "Repondre a tous les avis sous 24h",
       "Renforcer la description avec la proposition de valeur locale",
     ],
+    primaryCta: playbook.primaryCta,
+    secondaryCta: playbook.secondaryCta,
+    responseTone: playbook.responseTone,
+    reviewReplyTemplate: `Merci pour votre retour. Toute l'equipe de ${current.businessName} vous remercie et reste disponible pour vous accompagner rapidement.`,
   };
 }
 
@@ -182,6 +263,7 @@ function buildCurrentProfile(input: z.infer<typeof inputSchema>["business"], det
   const phone = details?.nationalPhoneNumber || input.phone || "Telephone a completer";
   const website = details?.websiteUri || input.website || "#";
   const mapsUrl = details?.googleMapsUri || input.mapsUrl || `https://www.google.com/maps/search/${encodeURIComponent(address)}`;
+  const playbook = buildCategoryPlaybook(category);
 
   return {
     businessName,
@@ -205,6 +287,10 @@ function buildCurrentProfile(input: z.infer<typeof inputSchema>["business"], det
     ],
     images,
     mapsUrl,
+    primaryCta: playbook.primaryCta,
+    secondaryCta: playbook.secondaryCta,
+    responseTone: playbook.responseTone,
+    reviewReplyTemplate: `Merci pour votre avis. Nous sommes heureux de vous accompagner et restons disponibles pour toute question complementaire.`,
   };
 }
 
@@ -215,6 +301,7 @@ async function generateOptimizedWithAI(current: ApiProfile): Promise<ApiProfile 
   }
 
   const openai = new OpenAI({ apiKey });
+  const playbook = buildCategoryPlaybook(current.category);
 
   const response = await createResponseWithModelFallback(openai, {
     input: [
@@ -223,7 +310,7 @@ async function generateOptimizedWithAI(current: ApiProfile): Promise<ApiProfile 
         content: [
           {
             type: "input_text",
-            text: "You optimize Google Business profile content for local businesses. Return strict JSON only. Keep claims realistic, no fabricated facts, and write concise French copy.",
+            text: "You optimize Google Business profile content for local businesses. Return strict JSON only. Keep claims realistic, no fabricated facts, and write concise French copy. Make the output category-aware and conversion-oriented.",
           },
         ],
       },
@@ -240,7 +327,11 @@ async function generateOptimizedWithAI(current: ApiProfile): Promise<ApiProfile 
                 "Services must stay generic and safe",
                 "FAQ must answer practical customer intent",
                 "Projected rating gain must remain realistic",
+                "Primary and secondary CTAs must fit the category",
+                "Response tone must match local business expectations",
+                "Review reply template must be reusable and polite",
               ],
+              playbook,
               current,
             }),
           },
@@ -271,6 +362,10 @@ async function generateOptimizedWithAI(current: ApiProfile): Promise<ApiProfile 
     services: uniqueStrings(parsed.data.services, 8),
     faqPairs: parsed.data.faqPairs.slice(0, 8),
     priorityActions: uniqueStrings(parsed.data.priorityActions, 8),
+    primaryCta: parsed.data.primaryCta,
+    secondaryCta: parsed.data.secondaryCta,
+    responseTone: parsed.data.responseTone,
+    reviewReplyTemplate: parsed.data.reviewReplyTemplate,
   };
 }
 

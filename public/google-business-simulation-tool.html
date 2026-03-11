@@ -928,7 +928,16 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
           reviewCount: boostedReviews,
           description: optimizedDescription,
           services: optimizedServices,
-          faqPairs: optimizedFaqPairs
+          faqPairs: optimizedFaqPairs,
+          priorityActions: [
+            "Publier 3 nouvelles photos reelles chaque semaine",
+            "Repondre a 100% des avis en moins de 24h",
+            "Structurer la fiche autour de la promesse principale"
+          ],
+          primaryCta: base.primaryCta || "Appeler maintenant",
+          secondaryCta: base.secondaryCta || "Demander un devis",
+          responseTone: base.responseTone || "professionnel et rassurant",
+          reviewReplyTemplate: base.reviewReplyTemplate || "Merci pour votre retour. Nous restons disponibles pour vous accompagner rapidement."
         };
       }
 
@@ -1140,7 +1149,16 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
           faqPairs: getLines("faq").map((line) => {
           const [q, a] = line.split("|");
           return { q: q ? q.trim() : "Question", a: a ? a.trim() : "Réponse à compléter" };
-          })
+          }),
+          priorityActions: [
+            "Clarifier la proposition de valeur dans la description",
+            "Ajouter des photos recentes et coherentes",
+            "Renforcer le temps de reponse aux avis"
+          ],
+          primaryCta: "Appeler maintenant",
+          secondaryCta: "Demander des informations",
+          responseTone: "professionnel, clair, orientee client",
+          reviewReplyTemplate: "Merci pour votre avis. Nous sommes ravis de votre retour et restons disponibles si besoin."
         };
 
         const currentProfile = selectedTargetProfile || formProfile;
@@ -1156,9 +1174,16 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
         const phone = displayProfile.phone;
         const website = displayProfile.website;
         const description = displayProfile.description;
+        const primaryCta = displayProfile.primaryCta || "Appeler maintenant";
+        const secondaryCta = displayProfile.secondaryCta || "Demander des informations";
+        const responseTone = displayProfile.responseTone || "professionnel, clair, orientee client";
+        const reviewReplyTemplate = displayProfile.reviewReplyTemplate || "Merci pour votre avis. Nous sommes ravis de votre retour.";
 
         const services = displayProfile.services;
         const faqPairs = displayProfile.faqPairs;
+        const priorityActions = optimizationMode
+          ? (optimizedProfile.priorityActions || [])
+          : (currentProfile.priorityActions || []);
 
         const inputImages = getLines("images");
         const images = inputImages.slice(0, 12);
@@ -1204,10 +1229,10 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
             </div>
             <div class="meta-line" style="margin-top:6px">${escapeHtml(address)} · ${escapeHtml(phone)}</div>
             <div class="actions">
-              <a class="g-btn" href="tel:${escapeHtml(phone)}">Call</a>
+              <a class="g-btn" href="tel:${escapeHtml(phone)}">${escapeHtml(primaryCta)}</a>
               <a class="g-btn" href="https://www.google.com/maps/search/${encodeURIComponent(address)}" target="_blank">Directions</a>
               <a class="g-btn" href="${escapeHtml(website)}" target="_blank">Website</a>
-              <a class="g-btn" href="#">Reserve</a>
+              <a class="g-btn" href="#">${escapeHtml(secondaryCta)}</a>
             </div>
             ${optimizationMode ? '<span class="opt-badge">Version optimisee active</span>' : ''}
           </div>
@@ -1282,6 +1307,14 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
           <div class="section">
             <h3>Description</h3>
             <p style="margin:0;color:#3c4043;line-height:1.6">${escapeHtml(description)}</p>
+            <p style="margin:8px 0 0;color:#5f6368;font-size:13px"><strong>Ton recommande:</strong> ${escapeHtml(responseTone)}</p>
+          </div>
+
+          <div class="section">
+            <h3>Plan d'action prioritaire</h3>
+            <div class="service-list">
+              ${(priorityActions.length ? priorityActions : ["Definir un plan de publication photos et reponses avis"]).map((item) => `<div class="item"><span class="check">✓</span>${escapeHtml(item)}</div>`).join("")}
+            </div>
           </div>
 
           <div class="section">
@@ -1305,7 +1338,7 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
                 <div class="item">
                   <div class="review-author">${escapeHtml(r.author)} · ${"★".repeat(r.score)}</div>
                   <div style="margin-top:4px;color:#3c4043">${escapeHtml(r.text)}</div>
-                  <div class="response"><strong>Réponse du propriétaire:</strong> ${escapeHtml(r.response)}</div>
+                  <div class="response"><strong>Réponse du propriétaire:</strong> ${escapeHtml(reviewReplyTemplate)}</div>
                 </div>
               `).join("")}
             </div>
