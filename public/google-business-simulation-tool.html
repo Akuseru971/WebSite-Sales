@@ -981,11 +981,55 @@ Y a-t-il une terrasse ?|Oui, terrasse disponible aux beaux jours.</textarea></di
         return Math.max(45, Math.round((rating * 20 + Math.min(30, servicesCount * 4) + Math.min(20, faqCount * 3)) / 1.1));
       }
 
+      function hasConcreteValue(value) {
+        const normalized = String(value || "").trim();
+        if (!normalized) return false;
+        return !/a completer|non disponible|^#$|^-$|non renseigne/i.test(normalized);
+      }
+
+      function buildConcreteOptimizedDescriptionLocal(base) {
+        const category = String(base.category || "").toLowerCase();
+        const city = base.city || "la zone locale";
+        const address = hasConcreteValue(base.address) ? base.address : `secteur ${city}`;
+        const contactSentence = hasConcreteValue(base.phone)
+          ? `Contact direct au ${base.phone}.`
+          : "Contact direct depuis la fiche Google.";
+        const webSentence = hasConcreteValue(base.website)
+          ? `Informations detaillees disponibles sur ${base.website}.`
+          : "Toutes les informations utiles sont centralisees sur la fiche Google.";
+
+        if (/taxi/.test(category)) {
+          return `${base.businessName} propose des trajets taxi a ${city} pour gares, aeroport, rendez-vous et deplacements professionnels, avec prise en charge rapide depuis ${address}. ${contactSentence} Les boutons de reservation sont mis en avant pour reduire le delai de commande. ${webSentence}`;
+        }
+
+        if (/pharmacy|pharmacie/.test(category)) {
+          return `${base.businessName} accompagne les clients a ${city} avec un service officine clair: conseil, disponibilite des produits et orientation rapide selon le besoin, depuis ${address}. ${contactSentence} Les actions principales de contact sont visibles en haut de fiche. ${webSentence}`;
+        }
+
+        if (/garage|auto|car|repair/.test(category)) {
+          return `${base.businessName} intervient a ${city} pour diagnostic, entretien et reparations courantes, avec un parcours client lisible depuis ${address}. ${contactSentence} Les demandes de devis et rendez-vous sont placees au premier niveau de la fiche. ${webSentence}`;
+        }
+
+        if (/coiffeur|hair|salon|beauty/.test(category)) {
+          return `${base.businessName} accueille a ${city} pour coupes, techniques et conseils personnalises depuis ${address}. ${contactSentence} La prise de rendez-vous est simplifiee avec des appels a l'action immediats. ${webSentence}`;
+        }
+
+        if (/hotel|hostel|lodging/.test(category)) {
+          return `${base.businessName} facilite les sejours a ${city} avec des informations claires sur l'accueil, les services et l'acces depuis ${address}. ${contactSentence} Les actions de disponibilite et reservation sont affichees en priorite. ${webSentence}`;
+        }
+
+        if (/restaurant|food|cafe|bistro|pizza/.test(category)) {
+          return `${base.businessName} propose une experience restauration a ${city} avec menu, horaires et reservation visibles depuis ${address}. ${contactSentence} Les actions de commande et reservation sont placees en priorite pour passer a l'action rapidement. ${webSentence}`;
+        }
+
+        return `${base.businessName} presente une offre claire a ${city} depuis ${address}, avec informations pratiques, modes de contact et actions directes pour convertir les intentions locales. ${contactSentence} ${webSentence}`;
+      }
+
       function optimizeProfile(base) {
         const boostedRating = Math.min(5, base.rating + 0.2);
         const boostedReviews = base.reviewCount + Math.max(12, Math.round(base.reviewCount * 0.18));
 
-        const optimizedDescription = `${base.businessName} renforce sa presence locale avec une fiche claire, orientee conversion et preuve sociale. L'information est structuree pour repondre rapidement aux attentes des clients et augmenter les demandes entrantes.`;
+        const optimizedDescription = buildConcreteOptimizedDescriptionLocal(base);
 
         const optimizedServices = Array.from(new Set([
           ...base.services,
@@ -1496,7 +1540,6 @@ Y a-t-il une terrasse ?|Oui, terrasse disponible aux beaux jours.</textarea></di
           <div class="section">
             <h3>Description</h3>
             <p style="margin:0;color:#3c4043;line-height:1.6">${escapeHtml(description)}</p>
-            <p style="margin:8px 0 0;color:#5f6368;font-size:13px"><strong>Ton recommande:</strong> ${escapeHtml(responseTone)}</p>
           </div>
 
           <div class="section">

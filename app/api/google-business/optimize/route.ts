@@ -115,6 +115,63 @@ function defaultOptimizedDescription(name: string, city: string): string {
   return `${name} presente une fiche plus claire et orientee conversion locale a ${city}. Les informations essentielles, les visuels reels et les points de confiance sont renforces pour augmenter les contacts entrants.`;
 }
 
+const GENERIC_DESCRIPTION_REGEX = /presence locale|orientee conversion|preuve sociale|information est structuree|augmenter les demandes entrantes|fiche claire/i;
+
+function hasUsableValue(value: string): boolean {
+  const normalized = String(value || "").trim();
+  if (!normalized) {
+    return false;
+  }
+  return !/a completer|non disponible|^#$|^-$|non renseigne/i.test(normalized);
+}
+
+function buildConcreteOptimizedDescription(params: {
+  businessName: string;
+  category: string;
+  city: string;
+  address: string;
+  phone: string;
+  website: string;
+  primaryCta: string;
+  secondaryCta: string;
+}): string {
+  const category = params.category.toLowerCase();
+  const city = params.city || "la zone locale";
+  const address = hasUsableValue(params.address) ? params.address : `secteur ${city}`;
+  const contactSentence = hasUsableValue(params.phone)
+    ? `Contact direct au ${params.phone}.`
+    : "Contact direct depuis la fiche Google.";
+  const webSentence = hasUsableValue(params.website)
+    ? `Informations detaillees egalement disponibles sur ${params.website}.`
+    : "Les informations essentielles sont centralisees sur la fiche Google.";
+
+  if (/taxi/.test(category)) {
+    return `${params.businessName} propose des trajets taxi a ${city} (gares, aeroport, rendez-vous et deplacements professionnels) avec prise en charge rapide depuis ${address}. ${contactSentence} Boutons ${params.primaryCta} et ${params.secondaryCta} mis en avant pour reserver sans friction. ${webSentence}`;
+  }
+
+  if (/pharmacy|pharmacie/.test(category)) {
+    return `${params.businessName} accompagne les clients a ${city} avec un service officine clair: conseils, disponibilite des produits et orientation rapide selon le besoin, depuis ${address}. ${contactSentence} Les actions ${params.primaryCta} et ${params.secondaryCta} facilitent la prise de contact immediate. ${webSentence}`;
+  }
+
+  if (/garage|auto|car|repair/.test(category)) {
+    return `${params.businessName} intervient a ${city} pour diagnostic, entretien et reparations courantes avec un parcours client lisible depuis ${address}. ${contactSentence} Les actions ${params.primaryCta} et ${params.secondaryCta} sont priorisees pour obtenir un devis ou un rendez-vous rapidement. ${webSentence}`;
+  }
+
+  if (/coiffeur|hair|salon|beauty/.test(category)) {
+    return `${params.businessName} accueille a ${city} pour coupes, techniques et conseils personnalises depuis ${address}. ${contactSentence} Les boutons ${params.primaryCta} et ${params.secondaryCta} permettent de planifier la visite sans attendre. ${webSentence}`;
+  }
+
+  if (/hotel|hostel|lodging/.test(category)) {
+    return `${params.businessName} facilite les sejours a ${city} avec des informations claires sur l'accueil, les services et l'acces depuis ${address}. ${contactSentence} Les actions ${params.primaryCta} et ${params.secondaryCta} rendent la reservation plus directe. ${webSentence}`;
+  }
+
+  if (/restaurant|food|cafe|bistro|pizza/.test(category)) {
+    return `${params.businessName} propose une experience restauration a ${city} avec menu, horaires et modalites de reservation visibles depuis ${address}. ${contactSentence} Les actions ${params.primaryCta} et ${params.secondaryCta} orientent rapidement vers la commande ou la reservation. ${webSentence}`;
+  }
+
+  return `${params.businessName} presente une offre claire a ${city} depuis ${address}, avec informations pratiques, modes de contact et appels a l'action directement exploitables. ${contactSentence} Les actions ${params.primaryCta} et ${params.secondaryCta} simplifient le passage a l'action client. ${webSentence}`;
+}
+
 function buildCategoryPlaybook(rawCategory: string): {
   primaryCta: string;
   secondaryCta: string;
@@ -442,7 +499,16 @@ function buildFallbackOptimized(current: ApiProfile): ApiProfile {
     ...current,
     rating: projectedRating,
     reviewCount: projectedReviewCount,
-    description: defaultOptimizedDescription(current.businessName, current.city),
+    description: buildConcreteOptimizedDescription({
+      businessName: current.businessName,
+      category: current.category,
+      city: current.city,
+      address: current.address,
+      phone: current.phone,
+      website: current.website,
+      primaryCta: playbook.primaryCta,
+      secondaryCta: playbook.secondaryCta,
+    }),
     services,
     faqPairs,
     priorityActions: [
@@ -560,6 +626,8 @@ async function generateOptimizedWithAI(current: ApiProfile): Promise<ApiProfile 
                 "Primary and secondary CTAs must fit the category",
                 "Response tone must match local business expectations",
                 "Review reply template must be reusable and polite",
+                "Avoid abstract marketing wording (example: presence locale, conversion, preuve sociale)",
+                "Description must include concrete operational details (service type, zone, contact path)",
               ],
               playbook,
               current,
@@ -583,12 +651,25 @@ async function generateOptimizedWithAI(current: ApiProfile): Promise<ApiProfile 
 
   const projectedRating = Math.max(current.rating, Math.min(5, Number(parsed.data.projectedRating.toFixed(1))));
   const projectedReviewCount = Math.max(current.reviewCount, parsed.data.projectedReviewCount);
+  const normalizedDescription = parsed.data.optimizedDescription.trim().replace(/\s+/g, " ");
+  const description = GENERIC_DESCRIPTION_REGEX.test(normalizedDescription)
+    ? buildConcreteOptimizedDescription({
+        businessName: current.businessName,
+        category: current.category,
+        city: current.city,
+        address: current.address,
+        phone: current.phone,
+        website: current.website,
+        primaryCta: parsed.data.primaryCta,
+        secondaryCta: parsed.data.secondaryCta,
+      })
+    : normalizedDescription;
 
   return {
     ...current,
     rating: projectedRating,
     reviewCount: projectedReviewCount,
-    description: parsed.data.optimizedDescription,
+    description,
     services: uniqueStrings(parsed.data.services, 8),
     faqPairs: parsed.data.faqPairs.slice(0, 8),
     priorityActions: uniqueStrings(parsed.data.priorityActions, 8),
