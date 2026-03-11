@@ -58,6 +58,13 @@ type ApiProfile = {
   reviewReplyTemplate?: string;
 };
 
+type OptimizationChange = {
+  title: string;
+  before: string;
+  after: string;
+  impact: string;
+};
+
 interface GooglePhoto {
   name?: string;
 }
@@ -174,6 +181,225 @@ function buildCategoryPlaybook(rawCategory: string): {
     faqFocus: ["horaires", "contact", "prestations"],
     responseTone: "professionnel, clair, orientee aide",
   };
+}
+
+function normalizeHttpUrl(raw: string): string | undefined {
+  const value = String(raw || "").trim();
+  if (!value) {
+    return undefined;
+  }
+
+  const withProtocol = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+
+  try {
+    const url = new URL(withProtocol);
+    if (!/^https?:$/i.test(url.protocol)) {
+      return undefined;
+    }
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function absolutizeImageUrl(url: string, origin: string): string | undefined {
+  const trimmed = String(url || "").trim();
+  if (!trimmed || trimmed.startsWith("data:")) {
+    return undefined;
+  }
+
+  try {
+    return new URL(trimmed, origin).toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function extractWebsiteImageUrls(html: string, pageUrl: string): string[] {
+  const srcMatches = [...html.matchAll(/<img[^>]+src=["']([^"']+)["'][^>]*>/gi)]
+    .map((match) => absolutizeImageUrl(match[1], pageUrl))
+    .filter((value): value is string => Boolean(value));
+
+  const ogMatches = [...html.matchAll(/property=["']og:image["'][^>]*content=["']([^"']+)["']/gi)]
+    .map((match) => absolutizeImageUrl(match[1], pageUrl))
+    .filter((value): value is string => Boolean(value));
+
+  return uniqueStrings([
+    ...ogMatches,
+    ...srcMatches.filter((url) => !/logo|icon|sprite|badge|avatar|favicon|placeholder/i.test(url)),
+  ], 16);
+}
+
+async function gatherWebsiteImages(websiteUrl: string): Promise<string[]> {
+  const normalized = normalizeHttpUrl(websiteUrl);
+  if (!normalized) {
+    return [];
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
+    const response = await fetch(normalized, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; GoogleBusinessOptimizationBot/1.0)",
+      },
+      signal: controller.signal,
+      redirect: "follow",
+      cache: "no-store",
+    }).finally(() => clearTimeout(timeout));
+
+    if (!response.ok) {
+      return [];
+    }
+
+    const html = await response.text();
+    return extractWebsiteImageUrls(html, normalized);
+  } catch {
+    return [];
+  }
+}
+
+function buildCategoryImageKeywords(category: string, businessName: string, city: string): string[] {
+  const normalizedCategory = category.toLowerCase();
+
+  if (/restaurant|food|cafe|bistro|pizza/.test(normalizedCategory)) {
+    return [`${businessName} restaurant`, `restaurant ${city} interieur`, `plat gastronomique`, "service en salle", "terrasse restaurant"];
+  }
+
+  if (/pharmacy|pharmacie/.test(normalizedCategory)) {
+    return [`${businessName} pharmacie`, `pharmacie ${city} vitrine`, "comptoir pharmacie", "parapharmacie", "service conseil sante"];
+  }
+
+  if (/hotel|hostel|lodging/.test(normalizedCategory)) {
+    return [`${businessName} hotel`, `hotel ${city} lobby`, "chambre hotel", "petit dejeuner hotel", "accueil hotel"];
+  }
+
+  if (/garage|car|repair|auto/.test(normalizedCategory)) {
+    return [`${businessName} garage`, `atelier auto ${city}`, "diagnostic vehicule", "mecanique automobile", "service entretien auto"];
+  }
+
+  if (/coiffeur|hair|beauty|salon/.test(normalizedCategory)) {
+    return [`${businessName} salon`, `salon coiffure ${city}`, "coupe cheveux", "coloration", "accueil salon"];
+  }
+
+  return [`${businessName} ${city}`, `${category} ${city}`, `${category} vitrine`, `${category} interieur`, `${category} equipe`];
+}
+
+function buildCategoryFallbackImageUrls(params: { category: string; businessName: string; city: string }): string[] {
+  const keywords = buildCategoryImageKeywords(params.category, params.businessName, params.city);
+  return keywords.slice(0, 8).map((keyword, index) =>
+    `https://source.unsplash.com/1600x900/?${encodeURIComponent(keyword)}&sig=${index + 1}`,
+  );
+}
+
+interface GeneratedImageEntry {
+  b64_json?: string;
+  url?: string;
+}
+
+interface GeneratedImagePayload {
+  data?: GeneratedImageEntry[];
+}
+
+async function generateBusinessImagesWithAI(params: {
+  businessName: string;
+  category: string;
+  city: string;
+  count: number;
+}): Promise<string[]> {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey || params.count <= 0) {
+    return [];
+  }
+
+  try {
+    const openai = new OpenAI({ apiKey });
+    const response = await openai.images.generate({
+      model: "gpt-image-1",
+      prompt: `Create realistic business marketing photos for a ${params.category} in ${params.city}. No text overlays, no logos, no watermarks. Show storefront, interior, team moments, and product/service context for ${params.businessName}.`,
+      size: "1024x1024",
+      n: Math.min(4, Math.max(1, params.count)),
+    });
+
+    const payload = response as unknown as GeneratedImagePayload;
+    const rawImages = Array.isArray(payload.data) ? payload.data : [];
+    const dataUrls = rawImages
+      .map((item) => {
+        if (item.b64_json) {
+          return `data:image/png;base64,${item.b64_json}`;
+        }
+        return item.url || "";
+      })
+      .filter(Boolean);
+
+    return uniqueStrings(dataUrls, 8);
+  } catch {
+    return [];
+  }
+}
+
+function buildOptimizationChanges(current: ApiProfile, optimized: ApiProfile): OptimizationChange[] {
+  const changes: OptimizationChange[] = [];
+
+  if (current.description !== optimized.description) {
+    changes.push({
+      title: "Description business reecrite",
+      before: current.description,
+      after: optimized.description,
+      impact: "Message plus clair, orientee intention client et conversion locale.",
+    });
+  }
+
+  const addedServices = optimized.services.filter((service) => !current.services.includes(service));
+  if (addedServices.length > 0) {
+    changes.push({
+      title: "Services clarifies et completes",
+      before: current.services.join(" | "),
+      after: optimized.services.join(" | "),
+      impact: `Mise en avant de ${addedServices.length} service(s) supplementaire(s) qui aident la decision client.`,
+    });
+  }
+
+  const addedFaq = optimized.faqPairs.filter((faq) =>
+    !current.faqPairs.some((existing) => existing.q === faq.q && existing.a === faq.a),
+  );
+  if (addedFaq.length > 0) {
+    changes.push({
+      title: "FAQ orientee objections clients",
+      before: current.faqPairs.map((item) => item.q).join(" | "),
+      after: optimized.faqPairs.map((item) => item.q).join(" | "),
+      impact: "Moins de friction: les questions les plus frequentes sont traitees avant le contact.",
+    });
+  }
+
+  if ((current.primaryCta || "") !== (optimized.primaryCta || "") || (current.secondaryCta || "") !== (optimized.secondaryCta || "")) {
+    changes.push({
+      title: "CTA adaptes au secteur",
+      before: `${current.primaryCta || "Appeler"} / ${current.secondaryCta || "Demander"}`,
+      after: `${optimized.primaryCta || "Appeler"} / ${optimized.secondaryCta || "Demander"}`,
+      impact: "Actions plus naturelles pour le client selon le type de business.",
+    });
+  }
+
+  if (optimized.images.length !== current.images.length) {
+    changes.push({
+      title: "Portefeuille photo renforce",
+      before: `${current.images.length} image(s) exploitable(s)`,
+      after: `${optimized.images.length} image(s) exploitable(s)`,
+      impact: "Meilleure preuve visuelle pour rassurer et augmenter les clics.",
+    });
+  }
+
+  if (optimized.rating !== current.rating || optimized.reviewCount !== current.reviewCount) {
+    changes.push({
+      title: "Projection de performance",
+      before: `${current.rating.toFixed(1)} (${current.reviewCount} avis)`,
+      after: `${optimized.rating.toFixed(1)} (${optimized.reviewCount} avis)`,
+      impact: "Objectif de progression concret apres application du plan de fiche.",
+    });
+  }
+
+  return changes.slice(0, 8);
 }
 
 function buildFallbackOptimized(current: ApiProfile): ApiProfile {
@@ -389,6 +615,10 @@ export async function POST(request: Request) {
       details = await fetchPlaceDetails(incoming.id, apiKey);
     }
 
+    const inferredName = details?.displayName?.text || incoming.name || "Business";
+    const inferredCategory = details?.primaryType || incoming.category || "local_business";
+    const inferredCity = incoming.city || "Ville";
+
     const detailPhotos = Array.isArray(details?.photos)
       ? details!.photos
           .map((photo) => buildPhotoProxyUrl(photo?.name, 1200))
@@ -396,17 +626,51 @@ export async function POST(request: Request) {
       : [];
 
     const inputPhotos = Array.isArray(incoming.photos) ? incoming.photos : [];
-    const images = uniqueStrings([...detailPhotos, ...inputPhotos], 12);
+    const websiteImages = await gatherWebsiteImages(details?.websiteUri || incoming.website || "");
+    const directImages = uniqueStrings([...detailPhotos, ...inputPhotos, ...websiteImages], 12);
+
+    const aiGeneratedImages = directImages.length >= 4
+      ? []
+      : await generateBusinessImagesWithAI({
+          businessName: inferredName,
+          category: inferredCategory,
+          city: inferredCity,
+          count: Math.max(2, 6 - directImages.length),
+        });
+
+    const categoryFallbackImages = directImages.length + aiGeneratedImages.length >= 6
+      ? []
+      : buildCategoryFallbackImageUrls({
+          category: inferredCategory,
+          businessName: inferredName,
+          city: inferredCity,
+        });
+
+    const images = uniqueStrings([...directImages, ...aiGeneratedImages, ...categoryFallbackImages], 12);
 
     const currentProfile = buildCurrentProfile(incoming, details, images);
     const aiOptimized = await generateOptimizedWithAI(currentProfile);
-    const optimizedProfile = aiOptimized ?? buildFallbackOptimized(currentProfile);
+    const optimizedProfile = {
+      ...(aiOptimized ?? buildFallbackOptimized(currentProfile)),
+      images,
+    };
+    const changes = buildOptimizationChanges(currentProfile, optimizedProfile);
+
+    const imageSources = uniqueStrings([
+      detailPhotos.length > 0 ? "google_places_details" : "",
+      inputPhotos.length > 0 ? "search_result_photos" : "",
+      websiteImages.length > 0 ? "website_images" : "",
+      aiGeneratedImages.length > 0 ? "ai_generated_images" : "",
+      categoryFallbackImages.length > 0 ? "category_fallback_library" : "",
+    ], 8);
 
     return NextResponse.json({
       currentProfile,
       optimizedProfile,
+      changes,
       imageCount: images.length,
-      imageSource: detailPhotos.length > 0 ? "google_places_details" : "search_result_photos",
+      imageSource: imageSources[0] || "none",
+      imageSources,
       aiUsed: Boolean(aiOptimized),
     });
   } catch (error) {

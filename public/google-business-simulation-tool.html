@@ -703,12 +703,7 @@ Réservation en ligne</textarea></div>
         <div class="field"><label>FAQ (une question par ligne, format: Question|Réponse)</label><textarea id="faq">Avez-vous des options végétariennes ?|Oui, plusieurs plats sont disponibles chaque jour.
 Acceptez-vous les groupes ?|Oui, sur réservation préalable.
 Y a-t-il une terrasse ?|Oui, terrasse disponible aux beaux jours.</textarea></div>
-        <div class="field"><label>Images (6 URLs, une par ligne)</label><textarea id="images">https://images.unsplash.com/photo-1517248135467-4c7edcad34c4
-https://images.unsplash.com/photo-1559339352-11d035aa65de
-https://images.unsplash.com/photo-1555396273-367ea4eb4db5
-https://images.unsplash.com/photo-1552566626-52f8b828add9
-https://images.unsplash.com/photo-1551218808-94e220e084d2
-https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
+        <div class="field"><label>Images (jusqu'a 12 URLs, une par ligne)</label><textarea id="images" placeholder="Les images reelles Google/site/IA seront injectees ici automatiquement."></textarea></div>
 
         <button class="btn-generate" id="generateBtn">Generate Page</button>
         <button class="btn-optimize" id="optimizeBtn" type="button">Generer version optimisee + comparatif</button>
@@ -750,10 +745,9 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
       }
 
       function setTextLines(id, lines) {
-        if (!Array.isArray(lines) || lines.length === 0) return;
         const input = document.getElementById(id);
         if (!input) return;
-        input.value = lines
+        input.value = (Array.isArray(lines) ? lines : [])
           .map((line) => String(line || "").trim())
           .filter(Boolean)
           .join("\n");
@@ -780,6 +774,7 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
 
         selectedBusinessContext = business;
         selectedOptimizedProfile = null;
+        selectedChangeLog = [];
 
         const baselineServices = [
           "Information de base disponible",
@@ -813,9 +808,7 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
         setValue("phone", business.phone || "Telephone a completer");
         setValue("website", business.website || "#");
 
-        if (Array.isArray(business.photos) && business.photos.length) {
-          setTextLines("images", business.photos.slice(0, 6));
-        }
+        setTextLines("images", Array.isArray(business.photos) ? business.photos.slice(0, 12) : []);
 
         const generatedDescription = `${business.name} est une adresse locale a ${business.city}, reconnue pour la qualite de son service et une experience client rassurante. Cette simulation met en avant les elements qui renforcent la visibilite Google et la conversion.`;
         setValue("description", generatedDescription);
@@ -890,6 +883,7 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
       let selectedBusinessContext = null;
       let selectedTargetProfile = null;
       let selectedOptimizedProfile = null;
+      let selectedChangeLog = [];
       let optimizationMode = false;
 
       function setSearchStatus(text, type) {
@@ -964,6 +958,7 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
 
           const current = payload.currentProfile || null;
           const optimized = payload.optimizedProfile || null;
+          const changes = Array.isArray(payload.changes) ? payload.changes : [];
 
           if (!current) {
             throw new Error("Le serveur n'a pas retourne la fiche actuelle.");
@@ -971,6 +966,7 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
 
           selectedTargetProfile = current;
           selectedOptimizedProfile = optimized;
+          selectedChangeLog = changes;
           selectedBusinessContext = {
             ...business,
             mapsUrl: current.mapsUrl || business.mapsUrl,
@@ -990,19 +986,19 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
           setTextLines("faq", (current.faqPairs || []).map((item) => `${item.q || "Question"}|${item.a || "Reponse"}`));
 
           const imageList = Array.isArray(current.images) ? current.images : [];
-          if (imageList.length) {
-            setTextLines("images", imageList);
-          }
+          setTextLines("images", imageList);
 
           optimizationMode = true;
           generate();
 
-          const sourceLabel = payload.imageSource === "google_places_details"
-            ? "photos Google Places de la fiche actuelle"
-            : "photos Google deja disponibles";
+          const imageSources = Array.isArray(payload.imageSources) ? payload.imageSources : [payload.imageSource].filter(Boolean);
+          const sourceLabel = imageSources.length
+            ? imageSources.join(", ")
+            : "aucune source image";
           const aiLabel = payload.aiUsed ? "IA activee" : "fallback local";
           setSearchStatus(`Version optimisee generee (${aiLabel}) avec ${payload.imageCount || imageList.length || 0} image(s), source: ${sourceLabel}.`, "success");
         } catch (error) {
+          selectedChangeLog = [];
           selectedOptimizedProfile = optimizeProfile(selectedTargetProfile || {
             businessName: business.name || "Business",
             category: business.category || "local_business",
@@ -1134,6 +1130,44 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
         ];
       }
 
+      function buildLocalChangeLog(currentProfile, optimizedProfile) {
+        const changes = [];
+
+        if ((currentProfile.description || "") !== (optimizedProfile.description || "")) {
+          changes.push({
+            title: "Description reecrite",
+            before: currentProfile.description || "Description courte",
+            after: optimizedProfile.description || "Description optimisee",
+            impact: "Texte plus clair et plus orientee conversion locale."
+          });
+        }
+
+        const currentServices = Array.isArray(currentProfile.services) ? currentProfile.services : [];
+        const optimizedServices = Array.isArray(optimizedProfile.services) ? optimizedProfile.services : [];
+        const newServices = optimizedServices.filter((service) => !currentServices.includes(service));
+        if (newServices.length) {
+          changes.push({
+            title: "Services renforces",
+            before: currentServices.join(" | ") || "Services limites",
+            after: optimizedServices.join(" | "),
+            impact: `${newServices.length} nouveau(x) point(s) de service ajoute(s).`
+          });
+        }
+
+        const beforeCta = `${currentProfile.primaryCta || "Appeler"} / ${currentProfile.secondaryCta || "Demander"}`;
+        const afterCta = `${optimizedProfile.primaryCta || "Appeler"} / ${optimizedProfile.secondaryCta || "Demander"}`;
+        if (beforeCta !== afterCta) {
+          changes.push({
+            title: "CTA adaptes au business",
+            before: beforeCta,
+            after: afterCta,
+            impact: "Parcours client plus naturel pour declencher le contact."
+          });
+        }
+
+        return changes.slice(0, 8);
+      }
+
       function generate() {
         const formProfile = {
           businessName: document.getElementById("businessName").value.trim() || "Business Name",
@@ -1184,6 +1218,10 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
         const priorityActions = optimizationMode
           ? (optimizedProfile.priorityActions || [])
           : (currentProfile.priorityActions || []);
+
+        const changeLog = optimizationMode
+          ? (selectedChangeLog.length ? selectedChangeLog : buildLocalChangeLog(currentProfile, optimizedProfile))
+          : [];
 
         const inputImages = getLines("images");
         const images = inputImages.slice(0, 12);
@@ -1253,6 +1291,20 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
                 <div class="delta-up">Score: ${displayedScore} ( +${displayedScore - currentScore} )</div>
                 <div class="meta-line" style="margin-top:6px">Services: ${services.length} · FAQ: ${faqPairs.length}</div>
               </div>
+            </div>
+          </div>
+
+          <div class="section">
+            <h3>Changements reels appliques a la fiche</h3>
+            <div class="service-list">
+              ${(changeLog.length ? changeLog : [{ title: "Plan d'optimisation", before: "Etat actuel", after: "Version optimisee", impact: "Les changements sont appliques dans les sections ci-dessous." }]).map((change, idx) => `
+                <div class="item">
+                  <div style="font-weight:700">${idx + 1}. ${escapeHtml(change.title || "Changement")}</div>
+                  <div style="margin-top:5px;color:#5f6368"><strong>Avant:</strong> ${escapeHtml(change.before || "-")}</div>
+                  <div style="margin-top:5px;color:#188038"><strong>Apres:</strong> ${escapeHtml(change.after || "-")}</div>
+                  <div style="margin-top:5px;color:#30435d">${escapeHtml(change.impact || "Impact en cours d'analyse")}</div>
+                </div>
+              `).join("")}
             </div>
           </div>
           ` : ""}
