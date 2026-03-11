@@ -2,6 +2,27 @@ import { NextResponse } from "next/server";
 
 const PHOTO_NAME_REGEX = /^places\/[A-Za-z0-9_-]+\/photos\/[A-Za-z0-9_-]+$/;
 
+function formatGooglePhotoError(status: number, details: string): string {
+  let parsedMessage = "";
+
+  try {
+    const parsed = JSON.parse(details) as { error?: { message?: string } };
+    parsedMessage = parsed.error?.message || "";
+  } catch {
+    parsedMessage = details;
+  }
+
+  if (status === 403 || /PERMISSION_DENIED|has not been used|disabled/i.test(parsedMessage)) {
+    return "Google Places API n'est pas active pour ce projet. Active Places API (New) dans Google Cloud Console et attends quelques minutes.";
+  }
+
+  if (status === 401 || /API key|invalid/i.test(parsedMessage)) {
+    return "Cle API Google invalide ou non autorisee pour les photos Places.";
+  }
+
+  return `Google Place Photo error ${status}. ${parsedMessage || "Erreur inconnue."}`;
+}
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -33,10 +54,7 @@ export async function GET(request: Request) {
 
     if (!response.ok) {
       const details = await response.text();
-      return NextResponse.json(
-        { error: `Google Place Photo error ${response.status}: ${details}` },
-        { status: response.status },
-      );
+      return NextResponse.json({ error: formatGooglePhotoError(response.status, details) }, { status: response.status });
     }
 
     const contentType = response.headers.get("content-type") || "image/jpeg";

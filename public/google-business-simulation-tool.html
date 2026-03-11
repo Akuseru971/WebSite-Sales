@@ -348,6 +348,64 @@
         padding: 4px 10px;
       }
 
+      .profile-compare-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+
+      .profile-version-card {
+        border: 1px solid #e3e7eb;
+        border-radius: 12px;
+        padding: 10px;
+        background: #fff;
+      }
+
+      .profile-version-card h4 {
+        margin: 0;
+        font-size: 16px;
+      }
+
+      .version-tag {
+        display: inline-block;
+        margin-bottom: 8px;
+        padding: 3px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        font-weight: 700;
+      }
+
+      .version-current {
+        background: #f1f3f4;
+        color: #3c4043;
+      }
+
+      .version-optimized {
+        background: #e6f4ea;
+        color: #137333;
+      }
+
+      .version-meta {
+        margin: 6px 0;
+        font-size: 12px;
+        color: var(--muted);
+      }
+
+      .version-desc {
+        margin: 8px 0;
+        font-size: 13px;
+        line-height: 1.5;
+        color: #3c4043;
+      }
+
+      .version-list {
+        margin: 0;
+        padding-left: 18px;
+        font-size: 12px;
+        color: #3c4043;
+        line-height: 1.5;
+      }
+
       .preview {
         padding: 16px;
       }
@@ -573,6 +631,10 @@
         .compare-grid {
           grid-template-columns: 1fr;
         }
+
+        .profile-compare-grid {
+          grid-template-columns: 1fr;
+        }
       }
     </style>
   </head>
@@ -718,6 +780,31 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
 
         selectedBusinessContext = business;
 
+        const baselineServices = [
+          "Information de base disponible",
+          business.phone ? "Contact telephonique affiche" : "Contact telephonique incomplet",
+          business.website ? "Lien site web disponible" : "Lien site web manquant"
+        ];
+
+        const baselineFaq = [
+          { q: "Quels sont les horaires ?", a: "Horaires a confirmer selon Google et le site." },
+          { q: "Comment contacter l'etablissement ?", a: business.phone || "Telephone non renseigne pour le moment." }
+        ];
+
+        selectedTargetProfile = {
+          businessName: business.name || "Business",
+          category: business.category || "local_business",
+          city: business.city || "",
+          rating: Math.max(1, Math.min(5, Number(business.rating || 4))),
+          reviewCount: Math.max(0, Number(business.reviewCount || 0)),
+          address: business.address || "Adresse non disponible",
+          phone: business.phone || "Telephone a completer",
+          website: business.website || "#",
+          description: `${business.name || "Cet etablissement"} est present sur Google avec une fiche active. Cette version reprend l'etat actuel de la fiche ciblee avant optimisation.`,
+          services: baselineServices,
+          faqPairs: baselineFaq
+        };
+
         setValue("businessName", business.name);
         setValue("category", business.category);
         setValue("city", business.city);
@@ -797,6 +884,7 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
 
       let lastSearchBusinesses = [];
       let selectedBusinessContext = null;
+      let selectedTargetProfile = null;
       let optimizationMode = false;
 
       function computeAuditScore(rating, reviewCount, servicesCount, faqCount) {
@@ -830,6 +918,27 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
           services: optimizedServices,
           faqPairs: optimizedFaqPairs
         };
+      }
+
+      function renderProfileVersionCard(profile, version) {
+        const isOptimized = version === "optimized";
+        const tagClass = isOptimized ? "version-optimized" : "version-current";
+        const tagLabel = isOptimized ? "Version optimisee" : "Version actuelle";
+        const topServices = (profile.services || []).slice(0, 3);
+
+        return `
+          <div class="profile-version-card">
+            <span class="version-tag ${tagClass}">${tagLabel}</span>
+            <h4>${escapeHtml(profile.businessName)}</h4>
+            <div class="version-meta">${escapeHtml(profile.category)} · ${escapeHtml(profile.city)}</div>
+            <div class="version-meta">Note: ${Number(profile.rating || 0).toFixed(1)} · ${profile.reviewCount || 0} avis</div>
+            <div class="version-meta">${escapeHtml(profile.address || "Adresse non disponible")}</div>
+            <div class="version-desc">${escapeHtml(profile.description || "Description indisponible")}</div>
+            <ul class="version-list">
+              ${topServices.map((service) => `<li>${escapeHtml(service)}</li>`).join("")}
+            </ul>
+          </div>
+        `;
       }
 
       async function searchBusinessesByCity() {
@@ -923,7 +1032,7 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
       }
 
       function generate() {
-        const baseProfile = {
+        const formProfile = {
           businessName: document.getElementById("businessName").value.trim() || "Business Name",
           category: document.getElementById("category").value.trim() || "Category",
           city: document.getElementById("city").value.trim() || "City",
@@ -940,7 +1049,9 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
           })
         };
 
-        const displayProfile = optimizationMode ? optimizeProfile(baseProfile) : baseProfile;
+        const currentProfile = selectedTargetProfile || formProfile;
+        const optimizedProfile = optimizeProfile(currentProfile);
+        const displayProfile = optimizationMode ? optimizedProfile : currentProfile;
 
         const businessName = displayProfile.businessName;
         const category = displayProfile.category;
@@ -975,7 +1086,7 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
         const bars = buildRatingBreakdown(rating, reviewCount);
         const maxBar = Math.max(...bars.map((b) => b.count), 1);
 
-        const currentScore = computeAuditScore(baseProfile.rating, baseProfile.reviewCount, baseProfile.services.length, baseProfile.faqPairs.length);
+        const currentScore = computeAuditScore(currentProfile.rating, currentProfile.reviewCount, currentProfile.services.length, currentProfile.faqPairs.length);
         const optimizedScore = Math.min(100, currentScore + 12);
         const displayedScore = optimizationMode
           ? computeAuditScore(rating, reviewCount, services.length, faqPairs.length)
@@ -1021,9 +1132,9 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
             <div class="compare-grid">
               <div class="compare-card">
                 <div class="compare-title">Fiche actuelle</div>
-                <div class="compare-value">${baseProfile.rating.toFixed(1)} · ${baseProfile.reviewCount} avis</div>
+                <div class="compare-value">${currentProfile.rating.toFixed(1)} · ${currentProfile.reviewCount} avis</div>
                 <div class="delta-neutral">Score: ${currentScore}</div>
-                <div class="meta-line" style="margin-top:6px">Services: ${baseProfile.services.length} · FAQ: ${baseProfile.faqPairs.length}</div>
+                <div class="meta-line" style="margin-top:6px">Services: ${currentProfile.services.length} · FAQ: ${currentProfile.faqPairs.length}</div>
               </div>
               <div class="compare-card">
                 <div class="compare-title">Version optimisee</div>
@@ -1034,6 +1145,14 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
             </div>
           </div>
           ` : ""}
+
+          <div class="section">
+            <h3>Fiche ciblee reprise et version amelioree</h3>
+            <div class="profile-compare-grid">
+              ${renderProfileVersionCard(currentProfile, "current")}
+              ${renderProfileVersionCard(optimizedProfile, "optimized")}
+            </div>
+          </div>
 
           <div class="tabs">
             <button class="tab active">Présentation</button>
