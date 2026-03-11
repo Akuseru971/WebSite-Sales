@@ -597,102 +597,106 @@ async function generateOptimizedWithAI(current: ApiProfile): Promise<ApiProfile 
     return null;
   }
 
-  const openai = new OpenAI({ apiKey });
-  const playbook = buildCategoryPlaybook(current.category);
+  try {
+    const openai = new OpenAI({ apiKey });
+    const playbook = buildCategoryPlaybook(current.category);
 
-  const response = await createResponseWithModelFallback(openai, {
-    input: [
-      {
-        role: "system",
-        content: [
-          {
-            type: "input_text",
-            text: "You optimize Google Business profile content for local businesses. Return strict JSON only. Keep claims realistic, no fabricated facts, and write concise French copy. Make the output category-aware and conversion-oriented.",
-          },
-        ],
-      },
-      {
-        role: "user",
-        content: [
-          {
-            type: "input_text",
-            text: JSON.stringify({
-              task: "Generate an optimized future version of this Google Business profile.",
-              constraints: [
-                "French language",
-                "Do not invent certifications or legal claims",
-                "Services must stay generic and safe",
-                "FAQ must answer practical customer intent",
-                "Projected rating gain must remain realistic",
-                "Primary and secondary CTAs must fit the category",
-                "Response tone must match local business expectations",
-                "Review reply template must be reusable and polite",
-                "Avoid abstract marketing wording (example: presence locale, conversion, preuve sociale)",
-                "Description must include concrete operational details (service type, zone, contact path)",
-                "Description must be publish-ready and must not mention optimization, audit, analysis, buttons, or before/after framing",
-              ],
-              playbook,
-              current,
-            }),
-          },
-        ],
-      },
-    ],
-    text: { format: { type: "json_object" } },
-  });
+    const response = await createResponseWithModelFallback(openai, {
+      input: [
+        {
+          role: "system",
+          content: [
+            {
+              type: "input_text",
+              text: "You optimize Google Business profile content for local businesses. Return strict JSON only. Keep claims realistic, no fabricated facts, and write concise French copy. Make the output category-aware and conversion-oriented.",
+            },
+          ],
+        },
+        {
+          role: "user",
+          content: [
+            {
+              type: "input_text",
+              text: JSON.stringify({
+                task: "Generate an optimized future version of this Google Business profile.",
+                constraints: [
+                  "French language",
+                  "Do not invent certifications or legal claims",
+                  "Services must stay generic and safe",
+                  "FAQ must answer practical customer intent",
+                  "Projected rating gain must remain realistic",
+                  "Primary and secondary CTAs must fit the category",
+                  "Response tone must match local business expectations",
+                  "Review reply template must be reusable and polite",
+                  "Avoid abstract marketing wording (example: presence locale, conversion, preuve sociale)",
+                  "Description must include concrete operational details (service type, zone, contact path)",
+                  "Description must be publish-ready and must not mention optimization, audit, analysis, buttons, or before/after framing",
+                ],
+                playbook,
+                current,
+              }),
+            },
+          ],
+        },
+      ],
+      text: { format: { type: "json_object" } },
+    });
 
-  const raw = response.output_text?.trim();
-  if (!raw) {
+    const raw = response.output_text?.trim();
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = aiOutputSchema.safeParse(JSON.parse(raw));
+    if (!parsed.success) {
+      return null;
+    }
+
+    const projectedRating = Math.max(current.rating, Math.min(5, Number(parsed.data.projectedRating.toFixed(1))));
+    const projectedReviewCount = Math.max(current.reviewCount, parsed.data.projectedReviewCount);
+    const normalizedDescription = parsed.data.optimizedDescription.trim().replace(/\s+/g, " ");
+    const description = GENERIC_DESCRIPTION_REGEX.test(normalizedDescription)
+      ? buildConcreteOptimizedDescription({
+          businessName: current.businessName,
+          category: current.category,
+          city: current.city,
+          address: current.address,
+          phone: current.phone,
+          website: current.website,
+          primaryCta: parsed.data.primaryCta,
+          secondaryCta: parsed.data.secondaryCta,
+        })
+      : normalizedDescription;
+
+    const safeOperationalDescription = NON_OPERATIONAL_DESCRIPTION_REGEX.test(description)
+      ? buildConcreteOptimizedDescription({
+          businessName: current.businessName,
+          category: current.category,
+          city: current.city,
+          address: current.address,
+          phone: current.phone,
+          website: current.website,
+          primaryCta: parsed.data.primaryCta,
+          secondaryCta: parsed.data.secondaryCta,
+        })
+      : description;
+
+    return {
+      ...current,
+      rating: projectedRating,
+      reviewCount: projectedReviewCount,
+      description: safeOperationalDescription,
+      services: uniqueStrings(parsed.data.services, 8),
+      faqPairs: parsed.data.faqPairs.slice(0, 8),
+      priorityActions: uniqueStrings(parsed.data.priorityActions, 8),
+      primaryCta: parsed.data.primaryCta,
+      secondaryCta: parsed.data.secondaryCta,
+      responseTone: parsed.data.responseTone,
+      reviewReplyTemplate: parsed.data.reviewReplyTemplate,
+    };
+  } catch {
     return null;
   }
-
-  const parsed = aiOutputSchema.safeParse(JSON.parse(raw));
-  if (!parsed.success) {
-    return null;
-  }
-
-  const projectedRating = Math.max(current.rating, Math.min(5, Number(parsed.data.projectedRating.toFixed(1))));
-  const projectedReviewCount = Math.max(current.reviewCount, parsed.data.projectedReviewCount);
-  const normalizedDescription = parsed.data.optimizedDescription.trim().replace(/\s+/g, " ");
-  const description = GENERIC_DESCRIPTION_REGEX.test(normalizedDescription)
-    ? buildConcreteOptimizedDescription({
-        businessName: current.businessName,
-        category: current.category,
-        city: current.city,
-        address: current.address,
-        phone: current.phone,
-        website: current.website,
-        primaryCta: parsed.data.primaryCta,
-        secondaryCta: parsed.data.secondaryCta,
-      })
-    : normalizedDescription;
-
-  const safeOperationalDescription = NON_OPERATIONAL_DESCRIPTION_REGEX.test(description)
-    ? buildConcreteOptimizedDescription({
-        businessName: current.businessName,
-        category: current.category,
-        city: current.city,
-        address: current.address,
-        phone: current.phone,
-        website: current.website,
-        primaryCta: parsed.data.primaryCta,
-        secondaryCta: parsed.data.secondaryCta,
-      })
-    : description;
-
-  return {
-    ...current,
-    rating: projectedRating,
-    reviewCount: projectedReviewCount,
-    description: safeOperationalDescription,
-    services: uniqueStrings(parsed.data.services, 8),
-    faqPairs: parsed.data.faqPairs.slice(0, 8),
-    priorityActions: uniqueStrings(parsed.data.priorityActions, 8),
-    primaryCta: parsed.data.primaryCta,
-    secondaryCta: parsed.data.secondaryCta,
-    responseTone: parsed.data.responseTone,
-    reviewReplyTemplate: parsed.data.reviewReplyTemplate,
-  };
 }
 
 export const runtime = "nodejs";
