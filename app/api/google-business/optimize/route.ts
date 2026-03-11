@@ -115,7 +115,8 @@ function defaultOptimizedDescription(name: string, city: string): string {
   return `${name} presente une fiche plus claire et orientee conversion locale a ${city}. Les informations essentielles, les visuels reels et les points de confiance sont renforces pour augmenter les contacts entrants.`;
 }
 
-const GENERIC_DESCRIPTION_REGEX = /presence locale|orientee conversion|preuve sociale|information est structuree|augmenter les demandes entrantes|fiche claire/i;
+const GENERIC_DESCRIPTION_REGEX = /presence locale|orientee conversion|preuve sociale|information est structuree|augmenter les demandes entrantes|fiche claire|version optimisee|optimis/i;
+const NON_OPERATIONAL_DESCRIPTION_REGEX = /optimis|version|constat|analyse|audit|fiche|conversion|preuve sociale|bouton/i;
 
 function hasUsableValue(value: string): boolean {
   const normalized = String(value || "").trim();
@@ -142,34 +143,34 @@ function buildConcreteOptimizedDescription(params: {
     ? `Contact direct au ${params.phone}.`
     : "Contact direct depuis la fiche Google.";
   const webSentence = hasUsableValue(params.website)
-    ? `Informations detaillees egalement disponibles sur ${params.website}.`
-    : "Les informations essentielles sont centralisees sur la fiche Google.";
+    ? `Informations detaillees sur ${params.website}.`
+    : "Informations detaillees disponibles par telephone.";
 
   if (/taxi/.test(category)) {
-    return `${params.businessName} propose des trajets taxi a ${city} (gares, aeroport, rendez-vous et deplacements professionnels) avec prise en charge rapide depuis ${address}. ${contactSentence} Boutons ${params.primaryCta} et ${params.secondaryCta} mis en avant pour reserver sans friction. ${webSentence}`;
+    return `Taxi VSL conventionne / Reservation taxi urgent / ${city}. ${params.businessName} propose des trajets taxi a ${city} pour gares, aeroport, rendez-vous medicaux et deplacements professionnels, avec prise en charge rapide depuis ${address}. ${contactSentence} ${webSentence}`;
   }
 
   if (/pharmacy|pharmacie/.test(category)) {
-    return `${params.businessName} accompagne les clients a ${city} avec un service officine clair: conseils, disponibilite des produits et orientation rapide selon le besoin, depuis ${address}. ${contactSentence} Les actions ${params.primaryCta} et ${params.secondaryCta} facilitent la prise de contact immediate. ${webSentence}`;
+    return `Pharmacie / Conseil / Disponibilite produits / ${city}. ${params.businessName} accompagne les clients a ${city} avec conseil officinal, orientation rapide et preparation des demandes depuis ${address}. ${contactSentence} ${webSentence}`;
   }
 
   if (/garage|auto|car|repair/.test(category)) {
-    return `${params.businessName} intervient a ${city} pour diagnostic, entretien et reparations courantes avec un parcours client lisible depuis ${address}. ${contactSentence} Les actions ${params.primaryCta} et ${params.secondaryCta} sont priorisees pour obtenir un devis ou un rendez-vous rapidement. ${webSentence}`;
+    return `Garage auto / Diagnostic / Entretien / ${city}. ${params.businessName} intervient a ${city} pour diagnostic, entretien et reparations courantes depuis ${address}. ${contactSentence} ${webSentence}`;
   }
 
   if (/coiffeur|hair|salon|beauty/.test(category)) {
-    return `${params.businessName} accueille a ${city} pour coupes, techniques et conseils personnalises depuis ${address}. ${contactSentence} Les boutons ${params.primaryCta} et ${params.secondaryCta} permettent de planifier la visite sans attendre. ${webSentence}`;
+    return `Salon de coiffure / Rendez-vous / Conseils / ${city}. ${params.businessName} accueille a ${city} pour coupes, techniques et conseils personnalises depuis ${address}. ${contactSentence} ${webSentence}`;
   }
 
   if (/hotel|hostel|lodging/.test(category)) {
-    return `${params.businessName} facilite les sejours a ${city} avec des informations claires sur l'accueil, les services et l'acces depuis ${address}. ${contactSentence} Les actions ${params.primaryCta} et ${params.secondaryCta} rendent la reservation plus directe. ${webSentence}`;
+    return `Hotel / Reservation / Accueil voyageurs / ${city}. ${params.businessName} facilite les sejours a ${city} avec informations claires sur l'accueil, les services et l'acces depuis ${address}. ${contactSentence} ${webSentence}`;
   }
 
   if (/restaurant|food|cafe|bistro|pizza/.test(category)) {
-    return `${params.businessName} propose une experience restauration a ${city} avec menu, horaires et modalites de reservation visibles depuis ${address}. ${contactSentence} Les actions ${params.primaryCta} et ${params.secondaryCta} orientent rapidement vers la commande ou la reservation. ${webSentence}`;
+    return `Restaurant / Reservation / Commande / ${city}. ${params.businessName} propose une offre restauration a ${city} avec menu, horaires et modalites de reservation depuis ${address}. ${contactSentence} ${webSentence}`;
   }
 
-  return `${params.businessName} presente une offre claire a ${city} depuis ${address}, avec informations pratiques, modes de contact et appels a l'action directement exploitables. ${contactSentence} Les actions ${params.primaryCta} et ${params.secondaryCta} simplifient le passage a l'action client. ${webSentence}`;
+  return `${params.category} / Service local / ${city}. ${params.businessName} propose ses prestations a ${city} depuis ${address} avec informations pratiques et contact immediat. ${contactSentence} ${webSentence}`;
 }
 
 function buildCategoryPlaybook(rawCategory: string): {
@@ -628,6 +629,7 @@ async function generateOptimizedWithAI(current: ApiProfile): Promise<ApiProfile 
                 "Review reply template must be reusable and polite",
                 "Avoid abstract marketing wording (example: presence locale, conversion, preuve sociale)",
                 "Description must include concrete operational details (service type, zone, contact path)",
+                "Description must be publish-ready and must not mention optimization, audit, analysis, buttons, or before/after framing",
               ],
               playbook,
               current,
@@ -665,11 +667,24 @@ async function generateOptimizedWithAI(current: ApiProfile): Promise<ApiProfile 
       })
     : normalizedDescription;
 
+  const safeOperationalDescription = NON_OPERATIONAL_DESCRIPTION_REGEX.test(description)
+    ? buildConcreteOptimizedDescription({
+        businessName: current.businessName,
+        category: current.category,
+        city: current.city,
+        address: current.address,
+        phone: current.phone,
+        website: current.website,
+        primaryCta: parsed.data.primaryCta,
+        secondaryCta: parsed.data.secondaryCta,
+      })
+    : description;
+
   return {
     ...current,
     rating: projectedRating,
     reviewCount: projectedReviewCount,
-    description,
+    description: safeOperationalDescription,
     services: uniqueStrings(parsed.data.services, 8),
     faqPairs: parsed.data.faqPairs.slice(0, 8),
     priorityActions: uniqueStrings(parsed.data.priorityActions, 8),

@@ -996,33 +996,33 @@ Y a-t-il une terrasse ?|Oui, terrasse disponible aux beaux jours.</textarea></di
           : "Contact direct depuis la fiche Google.";
         const webSentence = hasConcreteValue(base.website)
           ? `Informations detaillees disponibles sur ${base.website}.`
-          : "Toutes les informations utiles sont centralisees sur la fiche Google.";
+          : "Informations detaillees disponibles par telephone.";
 
         if (/taxi/.test(category)) {
-          return `${base.businessName} propose des trajets taxi a ${city} pour gares, aeroport, rendez-vous et deplacements professionnels, avec prise en charge rapide depuis ${address}. ${contactSentence} Les boutons de reservation sont mis en avant pour reduire le delai de commande. ${webSentence}`;
+          return `Taxi VSL conventionne / Reservation taxi urgent / ${city}. ${base.businessName} propose des trajets taxi a ${city} pour gares, aeroport, rendez-vous medicaux et deplacements professionnels, avec prise en charge rapide depuis ${address}. ${contactSentence} ${webSentence}`;
         }
 
         if (/pharmacy|pharmacie/.test(category)) {
-          return `${base.businessName} accompagne les clients a ${city} avec un service officine clair: conseil, disponibilite des produits et orientation rapide selon le besoin, depuis ${address}. ${contactSentence} Les actions principales de contact sont visibles en haut de fiche. ${webSentence}`;
+          return `Pharmacie / Conseil / Disponibilite produits / ${city}. ${base.businessName} accompagne les clients a ${city} avec conseil officinal, orientation rapide et preparation des demandes depuis ${address}. ${contactSentence} ${webSentence}`;
         }
 
         if (/garage|auto|car|repair/.test(category)) {
-          return `${base.businessName} intervient a ${city} pour diagnostic, entretien et reparations courantes, avec un parcours client lisible depuis ${address}. ${contactSentence} Les demandes de devis et rendez-vous sont placees au premier niveau de la fiche. ${webSentence}`;
+          return `Garage auto / Diagnostic / Entretien / ${city}. ${base.businessName} intervient a ${city} pour diagnostic, entretien et reparations courantes depuis ${address}. ${contactSentence} ${webSentence}`;
         }
 
         if (/coiffeur|hair|salon|beauty/.test(category)) {
-          return `${base.businessName} accueille a ${city} pour coupes, techniques et conseils personnalises depuis ${address}. ${contactSentence} La prise de rendez-vous est simplifiee avec des appels a l'action immediats. ${webSentence}`;
+          return `Salon de coiffure / Rendez-vous / Conseils / ${city}. ${base.businessName} accueille a ${city} pour coupes, techniques et conseils personnalises depuis ${address}. ${contactSentence} ${webSentence}`;
         }
 
         if (/hotel|hostel|lodging/.test(category)) {
-          return `${base.businessName} facilite les sejours a ${city} avec des informations claires sur l'accueil, les services et l'acces depuis ${address}. ${contactSentence} Les actions de disponibilite et reservation sont affichees en priorite. ${webSentence}`;
+          return `Hotel / Reservation / Accueil voyageurs / ${city}. ${base.businessName} facilite les sejours a ${city} avec informations claires sur l'accueil, les services et l'acces depuis ${address}. ${contactSentence} ${webSentence}`;
         }
 
         if (/restaurant|food|cafe|bistro|pizza/.test(category)) {
-          return `${base.businessName} propose une experience restauration a ${city} avec menu, horaires et reservation visibles depuis ${address}. ${contactSentence} Les actions de commande et reservation sont placees en priorite pour passer a l'action rapidement. ${webSentence}`;
+          return `Restaurant / Reservation / Commande / ${city}. ${base.businessName} propose une offre restauration a ${city} avec menu, horaires et modalites de reservation depuis ${address}. ${contactSentence} ${webSentence}`;
         }
 
-        return `${base.businessName} presente une offre claire a ${city} depuis ${address}, avec informations pratiques, modes de contact et actions directes pour convertir les intentions locales. ${contactSentence} ${webSentence}`;
+        return `${base.category || "Service local"} / Service local / ${city}. ${base.businessName} propose ses prestations a ${city} depuis ${address} avec informations pratiques et contact immediat. ${contactSentence} ${webSentence}`;
       }
 
       function optimizeProfile(base) {
