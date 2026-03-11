@@ -775,10 +775,11 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
         setTextLines("images", extracted.images);
       }
 
-      function applyBusinessSelection(business) {
+      async function applyBusinessSelection(business) {
         if (!business) return;
 
         selectedBusinessContext = business;
+        selectedOptimizedProfile = null;
 
         const baselineServices = [
           "Information de base disponible",
@@ -830,7 +831,10 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
           "Comment reserver ?|Par telephone ou via le site web."
         ]);
 
+        optimizationMode = false;
         generate();
+
+        await generateOptimizedBusinessProfile(business);
       }
 
       function businessCardHtml(business) {
@@ -885,7 +889,15 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
       let lastSearchBusinesses = [];
       let selectedBusinessContext = null;
       let selectedTargetProfile = null;
+      let selectedOptimizedProfile = null;
       let optimizationMode = false;
+
+      function setSearchStatus(text, type) {
+        const status = document.getElementById("searchStatus");
+        if (!status) return;
+        status.textContent = text;
+        status.className = type ? `status ${type}` : "status";
+      }
 
       function computeAuditScore(rating, reviewCount, servicesCount, faqCount) {
         return Math.max(45, Math.round((rating * 20 + Math.min(30, servicesCount * 4) + Math.min(20, faqCount * 3)) / 1.1));
@@ -918,6 +930,88 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
           services: optimizedServices,
           faqPairs: optimizedFaqPairs
         };
+      }
+
+      async function generateOptimizedBusinessProfile(business) {
+        if (!business || !business.id) {
+          return;
+        }
+
+        setSearchStatus("Generation de la version optimisee en cours...", "");
+
+        try {
+          const response = await fetch("/api/google-business/optimize", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ business })
+          });
+
+          const payload = await response.json();
+          if (!response.ok) {
+            throw new Error(payload && payload.error ? payload.error : "Generation impossible");
+          }
+
+          const current = payload.currentProfile || null;
+          const optimized = payload.optimizedProfile || null;
+
+          if (!current) {
+            throw new Error("Le serveur n'a pas retourne la fiche actuelle.");
+          }
+
+          selectedTargetProfile = current;
+          selectedOptimizedProfile = optimized;
+          selectedBusinessContext = {
+            ...business,
+            mapsUrl: current.mapsUrl || business.mapsUrl,
+            photos: Array.isArray(current.images) ? current.images : (Array.isArray(business.photos) ? business.photos : [])
+          };
+
+          setValue("businessName", current.businessName || business.name || "Business");
+          setValue("category", current.category || business.category || "local_business");
+          setValue("city", current.city || business.city || "");
+          setValue("rating", String(Number(current.rating || business.rating || 4.2)));
+          setValue("reviewCount", String(Number(current.reviewCount || business.reviewCount || 0)));
+          setValue("address", current.address || business.address || "Adresse non disponible");
+          setValue("phone", current.phone || business.phone || "Telephone a completer");
+          setValue("website", current.website || business.website || "#");
+          setValue("description", current.description || "");
+          setTextLines("services", current.services || []);
+          setTextLines("faq", (current.faqPairs || []).map((item) => `${item.q || "Question"}|${item.a || "Reponse"}`));
+
+          const imageList = Array.isArray(current.images) ? current.images : [];
+          if (imageList.length) {
+            setTextLines("images", imageList);
+          }
+
+          optimizationMode = true;
+          generate();
+
+          const sourceLabel = payload.imageSource === "google_places_details"
+            ? "photos Google Places de la fiche actuelle"
+            : "photos Google deja disponibles";
+          const aiLabel = payload.aiUsed ? "IA activee" : "fallback local";
+          setSearchStatus(`Version optimisee generee (${aiLabel}) avec ${payload.imageCount || imageList.length || 0} image(s), source: ${sourceLabel}.`, "success");
+        } catch (error) {
+          selectedOptimizedProfile = optimizeProfile(selectedTargetProfile || {
+            businessName: business.name || "Business",
+            category: business.category || "local_business",
+            city: business.city || "",
+            rating: Math.max(1, Math.min(5, Number(business.rating || 4.2))),
+            reviewCount: Math.max(0, Number(business.reviewCount || 0)),
+            address: business.address || "Adresse non disponible",
+            phone: business.phone || "Telephone a completer",
+            website: business.website || "#",
+            description: `${business.name || "Cet etablissement"} est present sur Google avec une fiche active.`,
+            services: ["Information de base disponible"],
+            faqPairs: [{ q: "Quels sont les horaires ?", a: "Horaires a confirmer." }]
+          });
+
+          optimizationMode = true;
+          generate();
+          setSearchStatus(`Generation optimisee partielle: ${error instanceof Error ? error.message : "erreur inconnue"}.`, "error");
+        }
       }
 
       function renderProfileVersionCard(profile, version) {
@@ -1005,7 +1099,7 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
             button.addEventListener("click", () => {
               const id = button.getAttribute("data-id");
               const found = lastSearchBusinesses.find((item) => item.id === id);
-              applyBusinessSelection(found);
+              void applyBusinessSelection(found);
             });
           });
         } catch (error) {
@@ -1050,7 +1144,7 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
         };
 
         const currentProfile = selectedTargetProfile || formProfile;
-        const optimizedProfile = optimizeProfile(currentProfile);
+        const optimizedProfile = selectedOptimizedProfile || optimizeProfile(currentProfile);
         const displayProfile = optimizationMode ? optimizedProfile : currentProfile;
 
         const businessName = displayProfile.businessName;
@@ -1067,15 +1161,7 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
         const faqPairs = displayProfile.faqPairs;
 
         const inputImages = getLines("images");
-        const fallback = [
-          "https://images.unsplash.com/photo-1517248135467-4c7edcad34c4",
-          "https://images.unsplash.com/photo-1559339352-11d035aa65de",
-          "https://images.unsplash.com/photo-1555396273-367ea4eb4db5",
-          "https://images.unsplash.com/photo-1552566626-52f8b828add9",
-          "https://images.unsplash.com/photo-1551218808-94e220e084d2",
-          "https://images.unsplash.com/photo-1414235077428-338989a2e8c0"
-        ];
-        const images = [...inputImages, ...fallback].slice(0, 6);
+        const images = inputImages.slice(0, 12);
 
         const reviews = [
           { author: "Camille R.", score: 5, text: "Service rapide et ambiance très agréable.", response: "Merci Camille, ravi que l'ambiance vous ait plu." },
@@ -1168,7 +1254,7 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
                 <div style="font-weight:700;margin-bottom:6px">Visuel actuel</div>
                 ${images[0] ? `<img class="current-photo" src="${escapeHtml(images[0])}" alt="Photo actuelle" />` : ""}
                 <div class="meta-line">${escapeHtml(address)}</div>
-                <div class="meta-line">Note actuelle: ${rating.toFixed(1)} · ${reviewCount} avis</div>
+                <div class="meta-line">Note actuelle: ${Number(currentProfile.rating || rating).toFixed(1)} · ${Number(currentProfile.reviewCount || reviewCount)} avis</div>
                 <a class="open-google" href="${escapeHtml(mapsUrl)}" target="_blank">Ouvrir la fiche Google actuelle</a>
                 <iframe
                   class="map-frame"
@@ -1189,7 +1275,7 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
           <div class="section">
             <h3>Photos</h3>
             <div class="gallery">
-              ${images.map((src, i) => `<img src="${escapeHtml(src)}?auto=format&fit=crop&w=900&q=80" alt="Photo ${i + 1}" />`).join("")}
+              ${images.length ? images.map((src, i) => `<img src="${escapeHtml(src)}" alt="Photo ${i + 1}" />`).join("") : "<div class='item'>Aucune photo Google exploitable pour cette fiche.</div>"}
             </div>
           </div>
 
@@ -1263,7 +1349,11 @@ https://images.unsplash.com/photo-1414235077428-338989a2e8c0</textarea></div>
         optimizationMode = false;
         generate();
       });
-      document.getElementById("optimizeBtn").addEventListener("click", () => {
+      document.getElementById("optimizeBtn").addEventListener("click", async () => {
+        if (selectedBusinessContext) {
+          await generateOptimizedBusinessProfile(selectedBusinessContext);
+          return;
+        }
         optimizationMode = true;
         generate();
       });

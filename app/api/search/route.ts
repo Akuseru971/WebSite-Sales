@@ -21,6 +21,7 @@ const FIELDS = [
   "places.userRatingCount",
   "places.websiteUri",
   "places.nationalPhoneNumber",
+  "places.googleMapsUri",
   "places.photos",
 ].join(",");
 
@@ -37,6 +38,7 @@ interface GooglePlaceItem {
   userRatingCount?: number;
   websiteUri?: string;
   nationalPhoneNumber?: string;
+  googleMapsUri?: string;
   photos?: GooglePlacePhoto[];
 }
 
@@ -127,7 +129,7 @@ export async function GET(request: Request) {
         website: place.websiteUri || "",
         photoUrl: photoNames[0] || "",
         photos: photoNames,
-        mapsUrl: place.id ? `https://www.google.com/maps/place/?q=place_id:${encodeURIComponent(place.id)}` : "",
+        mapsUrl: place.googleMapsUri || (place.id ? `https://www.google.com/maps/place/?q=place_id:${encodeURIComponent(place.id)}` : ""),
         raw: place,
       };
     });
