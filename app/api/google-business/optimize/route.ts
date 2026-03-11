@@ -341,11 +341,23 @@ async function generateBusinessImagesWithAI(params: {
 function buildOptimizationChanges(current: ApiProfile, optimized: ApiProfile): OptimizationChange[] {
   const changes: OptimizationChange[] = [];
 
+  const asValue = (value: string): string => {
+    const normalized = String(value || "").trim();
+    return normalized || "Aucun contenu initial";
+  };
+
+  const listValue = (values: string[]): string => {
+    if (!Array.isArray(values) || values.length === 0) {
+      return "Aucun contenu initial";
+    }
+    return values.join(" | ");
+  };
+
   if (current.description !== optimized.description) {
     changes.push({
       title: "Description business reecrite",
-      before: current.description,
-      after: optimized.description,
+      before: asValue(current.description),
+      after: asValue(optimized.description),
       impact: "Message plus clair, orientee intention client et conversion locale.",
     });
   }
@@ -354,8 +366,8 @@ function buildOptimizationChanges(current: ApiProfile, optimized: ApiProfile): O
   if (addedServices.length > 0) {
     changes.push({
       title: "Services clarifies et completes",
-      before: current.services.join(" | "),
-      after: optimized.services.join(" | "),
+      before: listValue(current.services),
+      after: listValue(optimized.services),
       impact: `Mise en avant de ${addedServices.length} service(s) supplementaire(s) qui aident la decision client.`,
     });
   }
@@ -366,8 +378,8 @@ function buildOptimizationChanges(current: ApiProfile, optimized: ApiProfile): O
   if (addedFaq.length > 0) {
     changes.push({
       title: "FAQ orientee objections clients",
-      before: current.faqPairs.map((item) => item.q).join(" | "),
-      after: optimized.faqPairs.map((item) => item.q).join(" | "),
+      before: listValue(current.faqPairs.map((item) => item.q)),
+      after: listValue(optimized.faqPairs.map((item) => item.q)),
       impact: "Moins de friction: les questions les plus frequentes sont traitees avant le contact.",
     });
   }
@@ -500,17 +512,9 @@ function buildCurrentProfile(input: z.infer<typeof inputSchema>["business"], det
     address,
     phone,
     website,
-    description: details?.editorialSummary?.text || defaultCurrentDescription(businessName, city),
-    services: [
-      "Information principale visible",
-      phone && !/a completer/i.test(phone) ? "Contact telephonique present" : "Contact telephonique incomplet",
-      website && website !== "#" ? "Lien vers site web present" : "Lien vers site web a completer",
-    ],
-    faqPairs: [
-      { q: "Quels sont les horaires ?", a: "Les horaires sont a verifier sur la fiche Google." },
-      { q: "Comment contacter l'etablissement ?", a: phone },
-      { q: "Ou se situe l'etablissement ?", a: address },
-    ],
+    description: details?.editorialSummary?.text || "",
+    services: [],
+    faqPairs: [],
     images,
     mapsUrl,
     primaryCta: playbook.primaryCta,
@@ -646,15 +650,15 @@ export async function POST(request: Request) {
           city: inferredCity,
         });
 
-    const images = uniqueStrings([...directImages, ...aiGeneratedImages, ...categoryFallbackImages], 12);
+    const optimizedImages = uniqueStrings([...directImages, ...aiGeneratedImages, ...categoryFallbackImages], 12);
 
-    const currentProfile = buildCurrentProfile(incoming, details, images);
+    const currentProfile = buildCurrentProfile(incoming, details, directImages);
     const aiOptimized = await generateOptimizedWithAI(currentProfile);
-    const optimizedProfile = {
+    const nextOptimizedProfile = {
       ...(aiOptimized ?? buildFallbackOptimized(currentProfile)),
-      images,
+      images: optimizedImages,
     };
-    const changes = buildOptimizationChanges(currentProfile, optimizedProfile);
+    const changes = buildOptimizationChanges(currentProfile, nextOptimizedProfile);
 
     const imageSources = uniqueStrings([
       detailPhotos.length > 0 ? "google_places_details" : "",
@@ -666,9 +670,11 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       currentProfile,
-      optimizedProfile,
+      optimizedProfile: nextOptimizedProfile,
       changes,
-      imageCount: images.length,
+      imageCount: optimizedImages.length,
+      currentImageCount: directImages.length,
+      optimizedImageCount: optimizedImages.length,
       imageSource: imageSources[0] || "none",
       imageSources,
       aiUsed: Boolean(aiOptimized),

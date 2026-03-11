@@ -306,6 +306,78 @@
         gap: 10px;
       }
 
+      .visual-diff-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+
+      .visual-diff-card {
+        border: 1px solid #e3e7eb;
+        border-radius: 12px;
+        padding: 10px;
+        background: #fff;
+      }
+
+      .visual-diff-card.optimized {
+        border-color: #b7dfc3;
+        background: #f7fcf8;
+      }
+
+      .visual-diff-label {
+        font-size: 12px;
+        font-weight: 700;
+        color: #5f6368;
+        margin-bottom: 8px;
+      }
+
+      .change-list {
+        display: grid;
+        gap: 10px;
+      }
+
+      .change-card {
+        border: 1px solid #e3e7eb;
+        border-radius: 12px;
+        padding: 10px;
+        background: #fff;
+      }
+
+      .change-pair {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-top: 8px;
+      }
+
+      .change-col {
+        border: 1px solid #e3e7eb;
+        border-radius: 10px;
+        padding: 8px;
+        background: #f8f9fa;
+        font-size: 12px;
+        color: #3c4043;
+        line-height: 1.45;
+      }
+
+      .change-col.after {
+        border-color: #b7dfc3;
+        background: #f2fbf4;
+      }
+
+      .change-caption {
+        display: block;
+        margin-bottom: 4px;
+        font-size: 11px;
+        font-weight: 700;
+        color: #5f6368;
+      }
+
+      .change-empty {
+        color: #8a4f00;
+        font-style: italic;
+      }
+
       .compare-card {
         border: 1px solid #e3e7eb;
         border-radius: 10px;
@@ -635,6 +707,14 @@
         .profile-compare-grid {
           grid-template-columns: 1fr;
         }
+
+        .visual-diff-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .change-pair {
+          grid-template-columns: 1fr;
+        }
       }
     </style>
   </head>
@@ -775,6 +855,8 @@ Y a-t-il une terrasse ?|Oui, terrasse disponible aux beaux jours.</textarea></di
         selectedBusinessContext = business;
         selectedOptimizedProfile = null;
         selectedChangeLog = [];
+        selectedCurrentImages = Array.isArray(business.photos) ? business.photos.slice(0, 12) : [];
+        selectedOptimizedImages = [];
 
         const baselineServices = [
           "Information de base disponible",
@@ -808,7 +890,7 @@ Y a-t-il une terrasse ?|Oui, terrasse disponible aux beaux jours.</textarea></di
         setValue("phone", business.phone || "Telephone a completer");
         setValue("website", business.website || "#");
 
-        setTextLines("images", Array.isArray(business.photos) ? business.photos.slice(0, 12) : []);
+        setTextLines("images", selectedCurrentImages);
 
         const generatedDescription = `${business.name} est une adresse locale a ${business.city}, reconnue pour la qualite de son service et une experience client rassurante. Cette simulation met en avant les elements qui renforcent la visibilite Google et la conversion.`;
         setValue("description", generatedDescription);
@@ -884,6 +966,8 @@ Y a-t-il une terrasse ?|Oui, terrasse disponible aux beaux jours.</textarea></di
       let selectedTargetProfile = null;
       let selectedOptimizedProfile = null;
       let selectedChangeLog = [];
+      let selectedCurrentImages = [];
+      let selectedOptimizedImages = [];
       let optimizationMode = false;
 
       function setSearchStatus(text, type) {
@@ -967,10 +1051,12 @@ Y a-t-il une terrasse ?|Oui, terrasse disponible aux beaux jours.</textarea></di
           selectedTargetProfile = current;
           selectedOptimizedProfile = optimized;
           selectedChangeLog = changes;
+          selectedCurrentImages = Array.isArray(current.images) ? current.images.slice(0, 12) : [];
+          selectedOptimizedImages = Array.isArray(optimized?.images) ? optimized.images.slice(0, 12) : selectedCurrentImages;
           selectedBusinessContext = {
             ...business,
             mapsUrl: current.mapsUrl || business.mapsUrl,
-            photos: Array.isArray(current.images) ? current.images : (Array.isArray(business.photos) ? business.photos : [])
+            photos: selectedOptimizedImages.length ? selectedOptimizedImages : selectedCurrentImages
           };
 
           setValue("businessName", current.businessName || business.name || "Business");
@@ -985,7 +1071,7 @@ Y a-t-il une terrasse ?|Oui, terrasse disponible aux beaux jours.</textarea></di
           setTextLines("services", current.services || []);
           setTextLines("faq", (current.faqPairs || []).map((item) => `${item.q || "Question"}|${item.a || "Reponse"}`));
 
-          const imageList = Array.isArray(current.images) ? current.images : [];
+          const imageList = selectedOptimizedImages.length ? selectedOptimizedImages : selectedCurrentImages;
           setTextLines("images", imageList);
 
           optimizationMode = true;
@@ -996,9 +1082,13 @@ Y a-t-il une terrasse ?|Oui, terrasse disponible aux beaux jours.</textarea></di
             ? imageSources.join(", ")
             : "aucune source image";
           const aiLabel = payload.aiUsed ? "IA activee" : "fallback local";
-          setSearchStatus(`Version optimisee generee (${aiLabel}) avec ${payload.imageCount || imageList.length || 0} image(s), source: ${sourceLabel}.`, "success");
+          const beforeCount = Number(payload.currentImageCount || selectedCurrentImages.length || 0);
+          const afterCount = Number(payload.optimizedImageCount || imageList.length || 0);
+          setSearchStatus(`Version optimisee generee (${aiLabel}) - images: ${beforeCount} avant / ${afterCount} apres. Sources: ${sourceLabel}.`, "success");
         } catch (error) {
           selectedChangeLog = [];
+          selectedCurrentImages = Array.isArray(business.photos) ? business.photos.slice(0, 12) : [];
+          selectedOptimizedImages = selectedCurrentImages;
           selectedOptimizedProfile = optimizeProfile(selectedTargetProfile || {
             businessName: business.name || "Business",
             category: business.category || "local_business",
@@ -1012,6 +1102,8 @@ Y a-t-il une terrasse ?|Oui, terrasse disponible aux beaux jours.</textarea></di
             services: ["Information de base disponible"],
             faqPairs: [{ q: "Quels sont les horaires ?", a: "Horaires a confirmer." }]
           });
+
+          setTextLines("images", selectedOptimizedImages);
 
           optimizationMode = true;
           generate();
@@ -1168,6 +1260,15 @@ Y a-t-il une terrasse ?|Oui, terrasse disponible aux beaux jours.</textarea></di
         return changes.slice(0, 8);
       }
 
+      function normalizeChangeValue(value) {
+        const normalized = String(value || "").trim();
+        return normalized || "Aucun contenu initial";
+      }
+
+      function isMissingChangeValue(value) {
+        return !String(value || "").trim();
+      }
+
       function generate() {
         const formProfile = {
           businessName: document.getElementById("businessName").value.trim() || "Business Name",
@@ -1223,8 +1324,14 @@ Y a-t-il une terrasse ?|Oui, terrasse disponible aux beaux jours.</textarea></di
           ? (selectedChangeLog.length ? selectedChangeLog : buildLocalChangeLog(currentProfile, optimizedProfile))
           : [];
 
-        const inputImages = getLines("images");
-        const images = inputImages.slice(0, 12);
+        const manualImages = getLines("images").slice(0, 12);
+        const currentImages = selectedCurrentImages.length
+          ? selectedCurrentImages.slice(0, 12)
+          : manualImages;
+        const optimizedImages = selectedOptimizedImages.length
+          ? selectedOptimizedImages.slice(0, 12)
+          : (Array.isArray(optimizedProfile.images) ? optimizedProfile.images.slice(0, 12) : currentImages);
+        const images = optimizationMode ? optimizedImages : currentImages;
 
         const reviews = [
           { author: "Camille R.", score: 5, text: "Service rapide et ambiance très agréable.", response: "Merci Camille, ravi que l'ambiance vous ait plu." },
@@ -1241,7 +1348,7 @@ Y a-t-il une terrasse ?|Oui, terrasse disponible aux beaux jours.</textarea></di
           ? computeAuditScore(rating, reviewCount, services.length, faqPairs.length)
           : currentScore;
 
-        const imageCount = images.length;
+        const imageCount = optimizationMode ? currentImages.length : images.length;
         const hasWebsite = website && website !== "#";
         const hasPhone = !!phone && !/a completer/i.test(phone);
         const gaps = [];
@@ -1296,15 +1403,45 @@ Y a-t-il une terrasse ?|Oui, terrasse disponible aux beaux jours.</textarea></di
 
           <div class="section">
             <h3>Changements reels appliques a la fiche</h3>
-            <div class="service-list">
+            <div class="change-list">
               ${(changeLog.length ? changeLog : [{ title: "Plan d'optimisation", before: "Etat actuel", after: "Version optimisee", impact: "Les changements sont appliques dans les sections ci-dessous." }]).map((change, idx) => `
-                <div class="item">
+                <div class="change-card">
                   <div style="font-weight:700">${idx + 1}. ${escapeHtml(change.title || "Changement")}</div>
-                  <div style="margin-top:5px;color:#5f6368"><strong>Avant:</strong> ${escapeHtml(change.before || "-")}</div>
-                  <div style="margin-top:5px;color:#188038"><strong>Apres:</strong> ${escapeHtml(change.after || "-")}</div>
+                  <div class="change-pair">
+                    <div class="change-col">
+                      <span class="change-caption">AVANT</span>
+                      <div class="${isMissingChangeValue(change.before) ? "change-empty" : ""}">${escapeHtml(normalizeChangeValue(change.before))}</div>
+                    </div>
+                    <div class="change-col after">
+                      <span class="change-caption">APRES</span>
+                      <div>${escapeHtml(normalizeChangeValue(change.after))}</div>
+                    </div>
+                  </div>
                   <div style="margin-top:5px;color:#30435d">${escapeHtml(change.impact || "Impact en cours d'analyse")}</div>
                 </div>
               `).join("")}
+            </div>
+          </div>
+
+          <div class="section">
+            <h3>Preuve visuelle avant / apres</h3>
+            <div class="visual-diff-grid">
+              <div class="visual-diff-card">
+                <div class="visual-diff-label">Avant: fiche actuelle (${currentImages.length} image(s))</div>
+                <div class="gallery">
+                  ${currentImages.length
+                    ? currentImages.slice(0, 6).map((src, i) => `<img src="${escapeHtml(src)}" alt="Avant ${i + 1}" />`).join("")
+                    : "<div class='item'>Aucune image initiale. L'optimisation ajoute des visuels adaptes.</div>"}
+                </div>
+              </div>
+              <div class="visual-diff-card optimized">
+                <div class="visual-diff-label">Apres: version optimisee (${optimizedImages.length} image(s))</div>
+                <div class="gallery">
+                  ${optimizedImages.length
+                    ? optimizedImages.slice(0, 6).map((src, i) => `<img src="${escapeHtml(src)}" alt="Apres ${i + 1}" />`).join("")
+                    : "<div class='item'>Generation en cours.</div>"}
+                </div>
+              </div>
             </div>
           </div>
           ` : ""}
@@ -1329,7 +1466,7 @@ Y a-t-il une terrasse ?|Oui, terrasse disponible aux beaux jours.</textarea></di
             <div class="analysis-grid">
               <div class="current-card">
                 <div style="font-weight:700;margin-bottom:6px">Visuel actuel</div>
-                ${images[0] ? `<img class="current-photo" src="${escapeHtml(images[0])}" alt="Photo actuelle" />` : ""}
+                ${currentImages[0] ? `<img class="current-photo" src="${escapeHtml(currentImages[0])}" alt="Photo actuelle" />` : ""}
                 <div class="meta-line">${escapeHtml(address)}</div>
                 <div class="meta-line">Note actuelle: ${Number(currentProfile.rating || rating).toFixed(1)} · ${Number(currentProfile.reviewCount || reviewCount)} avis</div>
                 <a class="open-google" href="${escapeHtml(mapsUrl)}" target="_blank">Ouvrir la fiche Google actuelle</a>
