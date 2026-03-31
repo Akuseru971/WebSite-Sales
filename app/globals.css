@@ -63,6 +63,10 @@ body {
     transition: transform 260ms ease, opacity 260ms ease;
   }
 
+  .fade-slide-in {
+    animation: fadeSlideIn 560ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
   .adaptive-density-airy .section-shell {
     @apply py-24 md:py-32;
   }
@@ -217,6 +221,18 @@ body {
     }
   }
 
+  @keyframes fadeSlideIn {
+    from {
+      opacity: 0;
+      transform: translateY(12px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
   @keyframes restaurantOrbFloatLeft {
     0%,
     100% {
@@ -241,6 +257,10 @@ body {
 
   @media (prefers-reduced-motion: reduce) {
     .restaurant-fade-up {
+      animation: none;
+    }
+
+    .fade-slide-in {
       animation: none;
     }
 
