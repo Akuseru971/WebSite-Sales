@@ -1,6 +1,5 @@
 import crypto from "node:crypto";
 import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
 import { getListingBoostEnv } from "@/lib/listingboost/env";
 
 const SESSION_COOKIE = "listingboost_admin";
@@ -53,10 +52,8 @@ export async function isAdminAuthenticated(): Promise<boolean> {
 }
 
 export async function requireAdminAuth(): Promise<void> {
-  const ok = await isAdminAuthenticated();
-  if (!ok) {
-    redirect("/login");
-  }
+  // Temporary bypass while the identification gate is disabled.
+  return;
 }
 
 export async function createAdminSession(email: string, password: string): Promise<boolean> {
