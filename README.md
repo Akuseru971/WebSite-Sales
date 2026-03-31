@@ -1,35 +1,136 @@
-# WebSite-Sales Demo Website Generator
+# ListingBoost AI (Internal SaaS)
 
-Production-ready Next.js demo website rendering system for internal lead-generation workflows.
-
-This implementation focuses on the premium demo website generation and preview engine:
-- Structured JSON content schema
-- Reusable section components
-- Category-specific templates (Taxi, Restaurant, Hotel, Real Estate)
-- Dynamic preview routes (`/preview/[slug]`)
-- Seeded realistic sample demos
-- Image fallback strategy
+Production-ready internal tool for a single operator to run prospect discovery, image extraction, strict-fidelity enhancement, mockup generation, outreach drafting, sending, and CRM tracking.
 
 ## Stack
 
-- Next.js App Router
+- Next.js 15 App Router
 - TypeScript
 - Tailwind CSS
-- Lucide icons
-- Zod-ready typing conventions (schema-compatible structure)
+- Supabase Postgres + Storage
+- OpenAI (text + image enhancement)
+- Resend (email delivery)
+- Playwright + Cheerio (public page extraction)
+- React Hook Form + Zod-ready schema layer
 
-## Quick Start
+## Internal Auth
+
+Single admin login only.
+
+- Route: `/login`
+- Credentials from env:
+  - `APP_ADMIN_EMAIL`
+  - `APP_ADMIN_PASSWORD`
+
+No public signup, no billing, no Stripe.
+
+## Main Pages
+
+- `/dashboard`
+- `/prospects`
+- `/prospects/[id]`
+- `/properties`
+- `/properties/[id]`
+- `/mockups`
+- `/mockups/share/[token]`
+- `/emails`
+- `/campaigns`
+- `/settings`
+
+## ListingBoost Modules
+
+Core library in `lib/listingboost/`:
+
+- `auth.ts`: single-admin session cookie handling
+- `env.ts`: strict environment validation
+- `types.ts`: schemas and shared types
+- `repository.ts`: typed data access against Supabase
+- `discovery.ts`: public signal extraction (emails, socials, contact pages)
+- `image-extraction.ts`: Playwright + Cheerio extraction and storage
+- `image-enhancement.ts`: strict-fidelity enhancement pipeline
+- `mockup.ts`: Google Business-style HTML + PNG generation
+- `email.ts`: AI email generation + Resend sender integration
+
+API routes in `app/api/listingboost/**` cover prospects, properties, extraction, enhancement, mockups, emails, settings, campaigns, and dashboard KPIs.
+
+## Database & Storage
+
+Supabase migrations:
+
+- `supabase/migrations/20260331_listingboost_core.sql`
+- `supabase/migrations/20260331_listingboost_storage.sql`
+- `supabase/migrations/20260331_listingboost_seed.sql`
+
+Tables:
+
+- `prospects`
+- `properties`
+- `extracted_images`
+- `improved_images`
+- `mockups`
+- `email_templates`
+- `outbound_emails`
+- `campaigns`
+- `activity_logs`
+- `settings`
+
+Storage buckets:
+
+- `listingboost-originals`
+- `listingboost-improved`
+- `listingboost-mockups`
+- `listingboost-attachments`
+
+## Strict Image Fidelity Rule
+
+Enhancement prompts are designed to preserve:
+
+- same room
+- same layout
+- same furniture
+- same architecture
+- same angle
+- same perspective
+
+Allowed changes:
+
+- brightness, lighting balance, white balance
+- sharpness, contrast, texture clarity
+- perceived cleanliness and premium real-estate photo feel
+
+## Setup
+
+1. Install dependencies:
 
 ```bash
 npm install
+```
+
+2. Create env file:
+
+```bash
+cp .env.example .env.local
+```
+
+3. Fill required env values in `.env.local`.
+
+4. Run Supabase migrations (via your preferred Supabase workflow).
+
+5. Start dev server:
+
+```bash
 npm run dev
 ```
 
-Then open:
-- `http://localhost:3000/preview` for demo library
-- `http://localhost:3000/preview/cityline-taxi-paris` for a specific preview
+6. Open `http://localhost:3000/login` and authenticate with admin credentials.
 
-## Available Scripts
+## Notes for MVP Reliability
+
+- Uses public URLs and public contact data only.
+- If extraction is blocked by robots policy, workflow should fallback to manual upload.
+- Tool prioritizes reliable manual fallback paths over brittle scraping sources.
+
+## Scripts
 
 ```bash
 npm run dev
@@ -38,131 +139,3 @@ npm run start
 npm run lint
 npm run typecheck
 ```
-
-## Implemented File Structure
-
-```txt
-app/
-	layout.tsx
-	globals.css
-	page.tsx
-	preview/
-		page.tsx
-		[slug]/
-			page.tsx
-			not-found.tsx
-
-components/
-	demo-site/
-		sections/
-			about-section.tsx
-			contact-section.tsx
-			cta-section.tsx
-			faq-section.tsx
-			featured-properties-section.tsx
-			gallery-section.tsx
-			hero-section.tsx
-			menu-highlights-section.tsx
-			room-highlights-section.tsx
-			service-coverage-section.tsx
-			services-section.tsx
-			stats-section.tsx
-			testimonials-section.tsx
-		shared/
-			container.tsx
-			image-card.tsx
-			section-heading.tsx
-		templates/
-			hotel-template.tsx
-			index.tsx
-			real-estate-template.tsx
-			restaurant-template.tsx
-			section-renderer.tsx
-			taxi-template.tsx
-			template-shell.tsx
-
-lib/
-	utils.ts
-	demo-sites/
-		defaults.ts
-		image-fallbacks.ts
-		renderers.ts
-		repository.ts
-		types.ts
-```
-
-## Content Model (Front-end Contract)
-
-Core type is `DemoSiteContent` in `lib/demo-sites/types.ts`.
-
-It supports:
-- `siteTitle`, `siteSubtitle`, `category`, `style`, `city`
-- `hero`
-- `sections[]` with discriminated `type`
-
-Section types implemented:
-- `about`
-- `services`
-- `menu_highlights`
-- `room_highlights`
-- `featured_properties`
-- `gallery`
-- `stats`
-- `coverage`
-- `testimonials`
-- `faq`
-- `cta`
-- `contact`
-
-This makes the renderer compatible with AI-generated structured output and Supabase JSON storage.
-
-## Template System
-
-Template mapper (`components/demo-site/templates/index.tsx`):
-- `taxi -> TaxiTemplate`
-- `restaurant -> RestaurantTemplate`
-- `hotel -> HotelTemplate`
-- `real_estate -> RealEstateTemplate`
-
-Each template:
-- Uses shared section components
-- Preserves category-specific mood and composition
-- Stays fully JSON-driven
-
-## Dynamic Preview Routing
-
-`app/preview/[slug]/page.tsx`:
-- Loads site data by slug via repository adapter
-- Generates metadata dynamically
-- Uses `generateStaticParams` for seeded demos
-- Renders through `DemoTemplateRenderer`
-
-## Data Source Adapter (Supabase-ready)
-
-`lib/demo-sites/repository.ts` currently uses seeded in-memory records.
-
-Replace with Supabase queries later without changing rendering components:
-- `getDemoSiteBySlug(slug)`
-- `listSeededDemoSites()`
-
-Suggested DB target table: `demo_sites` with a `generated_content_json` column matching `DemoSiteContent`.
-
-## Image Strategy
-
-`lib/demo-sites/image-fallbacks.ts` provides:
-- Category-specific fallback image pools
-- Stable fallback resolver `getFallbackImage(category, index)`
-
-If a business image is unavailable, previews stay visually strong and never break layout.
-
-## Environment Variables
-
-See `.env.example`:
-- Supabase placeholders for future integration
-- Optional OpenAI and CDN placeholders
-
-## Notes
-
-- This implementation intentionally avoids dashboard chrome on preview pages.
-- Previews are standalone and client-facing in appearance.
-- Built for extension with AI generation and Supabase persistence layers.

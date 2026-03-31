@@ -10,6 +10,16 @@
   --theme-accent: #a86f3f;
 }
 
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #090c12;
+    --foreground: #e8edf6;
+    --theme-primary: #e8edf6;
+    --theme-secondary: #090c12;
+    --theme-accent: #f59e0b;
+  }
+}
+
 body {
   background:
     radial-gradient(circle at 8% -6%, rgba(168, 111, 63, 0.16), transparent 28%),

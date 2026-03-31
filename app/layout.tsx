@@ -16,8 +16,8 @@ const body = Manrope({
 });
 
 export const metadata: Metadata = {
-  title: "WebSite Sales Demo Generator",
-  description: "Premium demo website preview rendering system for local businesses."
+  title: "ListingBoost AI",
+  description: "Internal SaaS for property prospecting, image enhancement, mockup generation and outreach."
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
