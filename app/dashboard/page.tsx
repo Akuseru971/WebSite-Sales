@@ -17,12 +17,38 @@ const kpiLabels: Array<{ key: keyof Awaited<ReturnType<typeof getDashboardKpis>>
   { key: "replies", label: "Replies" }
 ];
 
+const emptyKpis: Awaited<ReturnType<typeof getDashboardKpis>> = {
+  prospectsFound: 0,
+  prospectsWithPublicEmails: 0,
+  propertiesWithExtractedImages: 0,
+  improvedImagesGenerated: 0,
+  mockupsGenerated: 0,
+  emailsDrafted: 0,
+  emailsSent: 0,
+  opens: 0,
+  clicks: 0,
+  replies: 0
+};
+
 export default async function DashboardPage() {
   await requireAdminAuth();
-  const kpis = await getDashboardKpis();
+  let kpis = emptyKpis;
+  let hasDataError = false;
+
+  try {
+    kpis = await getDashboardKpis();
+  } catch {
+    hasDataError = true;
+  }
 
   return (
     <AppShell title="Dashboard">
+      {hasDataError ? (
+        <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-700/70 dark:bg-amber-950/40 dark:text-amber-200">
+          Dashboard data is temporarily unavailable. Check environment variables and Supabase connectivity.
+        </section>
+      ) : null}
+
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {kpiLabels.map((item) => (
           <article key={item.key} className="rounded-2xl border border-zinc-200 bg-white/80 p-4 dark:border-zinc-800 dark:bg-zinc-900/70">
